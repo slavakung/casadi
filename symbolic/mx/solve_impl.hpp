@@ -54,110 +54,222 @@ namespace CasADi{
 
   template<bool Tr>
   void Solve<Tr>::evaluateD(const DMatrixPtrV& input, DMatrixPtrV& output, const DMatrixPtrVV& fwdSeed, DMatrixPtrVV& fwdSens, const DMatrixPtrVV& adjSeed, DMatrixPtrVV& adjSens){
-    evaluateGen<double,DMatrixPtrV,DMatrixPtrVV>(input,output,fwdSeed,fwdSens,adjSeed,adjSens);
-  }
-
-  template<bool Tr>
-  void Solve<Tr>::evaluateSX(const SXMatrixPtrV& input, SXMatrixPtrV& output, const SXMatrixPtrVV& fwdSeed, SXMatrixPtrVV& fwdSens, const SXMatrixPtrVV& adjSeed, SXMatrixPtrVV& adjSens){
-    evaluateGen<SX,SXMatrixPtrV,SXMatrixPtrVV>(input,output,fwdSeed,fwdSens,adjSeed,adjSens);
-  }
-
-  template<bool Tr>
-  template<typename T, typename MatV, typename MatVV>
-  void Solve<Tr>::evaluateGen(const MatV& input, MatV& output, const MatVV& fwdSeed, MatVV& fwdSens, const MatVV& adjSeed, MatVV& adjSens){
     int nfwd = fwdSens.size();
     int nadj = adjSeed.size();
-
+    
+    // Factorize the matrix
+    linear_solver_.setInput(*input[1],LINSOL_A);
+    linear_solver_.prepare();
+    
+    // Solve for nondifferentiated output
     if(input[0]!=output[0]){
       copy(input[0]->begin(),input[0]->end(),output[0]->begin());
     }
-    casadi_error("not implemented");
+    linear_solver_.solve(getPtr(output[0]->data()),output[0]->size1(),Tr);
 
     // Forward sensitivities
     for(int d=0; d<nfwd; ++d){
       if(fwdSeed[d][0]!=fwdSens[d][0]){
         copy(fwdSeed[d][0]->begin(),fwdSeed[d][0]->end(),fwdSens[d][0]->begin());
       }
-      casadi_error("not implemented");
+      for_each(fwdSens[d][0]->begin(),fwdSens[d][0]->end(),std::negate<double>());
+      if(Tr){
+        DMatrix::mul_no_alloc_nt(*output[0],*fwdSeed[d][1],*fwdSens[d][0]);
+      } else {
+        DMatrix::mul_no_alloc_nn(*output[0],*fwdSeed[d][1],*fwdSens[d][0]);
+      }
+      for_each(fwdSens[d][0]->begin(),fwdSens[d][0]->end(),std::negate<double>());
+      linear_solver_.solve(getPtr(fwdSens[d][0]->data()),output[0]->size1(),Tr);      
     }
 
     // Adjoint sensitivities
     for(int d=0; d<nadj; ++d){
-      casadi_error("not implemented");
-      if(adjSeed[d][0]!=adjSens[d][0]){
-        transform(adjSeed[d][0]->begin(),adjSeed[d][0]->end(),adjSens[d][0]->begin(),adjSens[d][0]->begin(),std::plus<T>());
-        adjSeed[d][0]->setZero();
+
+      // Solve transposed
+      for_each(adjSeed[d][0]->begin(),adjSeed[d][0]->end(),std::negate<double>());
+      linear_solver_.solve(getPtr(adjSeed[d][0]->data()),output[0]->size1(),!Tr);
+
+      // Propagate to A
+      if(Tr){
+        DMatrix::mul_no_alloc_tn(*output[0],*adjSeed[d][0],*adjSens[d][1]);
+      } else {
+        DMatrix::mul_no_alloc_tn(*adjSeed[d][0],*output[0],*adjSens[d][1]);
+      }
+
+      // Propagate to B
+      if(adjSeed[d][0]==adjSens[d][0]){
+        for_each(adjSens[d][0]->begin(),adjSens[d][0]->end(),std::negate<double>());
+      } else {
+        transform(adjSens[d][0]->begin(),adjSens[d][0]->end(),adjSeed[d][0]->begin(),adjSens[d][0]->begin(),std::minus<double>());
+        fill(adjSeed[d][0]->begin(),adjSeed[d][0]->end(),0);
       }
     }
   }
 
   template<bool Tr>
   void Solve<Tr>::evaluateMX(const MXPtrV& input, MXPtrV& output, const MXPtrVV& fwdSeed, MXPtrVV& fwdSens, const MXPtrVV& adjSeed, MXPtrVV& adjSens, bool output_given){
-    const MX& r = *input[0];
+    int nfwd = fwdSens.size();
+    int nadj = adjSeed.size();
+    const MX& B = *input[0];
     const MX& A = *input[1];
-    MX& x = *output[0];
+    MX& X = *output[0];
+
+    // Nondifferentiated output
     if(!output_given){
-      x = A->getSolve(r,Tr,linear_solver_);
+      if(CasADi::isZero(B)){
+        X = MX::sparse(B.shape());
+      } else {
+        X = A->getSolve(B,Tr,linear_solver_);
+      }
     }
 
     // Forward sensitivities, collect the right hand sides
-    int nfwd = fwdSens.size();
+    vector<int> rhs_ind;
     vector<MX> rhs;
     vector<int> row_offset(1,0);
     for(int d=0; d<nfwd; ++d){
-      const MX& r_dot = *fwdSeed[d][0];
-      const MX& A_dot = *fwdSeed[d][1];
-      rhs.push_back(r_dot - mul(x,Tr ? trans(A_dot) : A_dot));
-      row_offset.push_back(row_offset.back()+r_dot.size1());
+      const MX& B_hat = *fwdSeed[d][0];
+      const MX& A_hat = *fwdSeed[d][1];
+      
+      // Get right hand side
+      MX rhs_d;
+      if(Tr){
+        rhs_d = B_hat - mul(X,trans(A_hat));
+      } else {
+        rhs_d = B_hat - mul(X,A_hat);
+      }
+      
+      // Simplifiy if zero
+      if(CasADi::isZero(rhs_d)){
+        *fwdSens[d][0] = MX::sparse(rhs_d.shape());
+      } else {
+        rhs.push_back(rhs_d);
+        rhs_ind.push_back(d);
+        row_offset.push_back(row_offset.back()+rhs_d.size1());
+      }
+    }
+    
+    if(!rhs.empty()){
+      // Solve for all directions at once
+      rhs = vertsplit(A->getSolve(vertcat(rhs),Tr,linear_solver_),row_offset);
+    
+      // Save result
+      for(int i=0; i<rhs.size(); ++i){
+        *fwdSens[rhs_ind[i]][0] = rhs[i];
+      }
     }
 
-    // Solve for all directions at once
-    MX lhs = A->getSolve(vertcat(rhs),Tr,linear_solver_);
-    
-    // Slit up the sensitivities
-    for(int d=0; d<nfwd; ++d){
-      MX& x_dot = *fwdSens[d][0];
-      x_dot = lhs(Slice(row_offset[d],row_offset[d+1]),Slice());
-      x_dot = MX();
-    }
-  
     // Adjoint sensitivities, collect right hand sides
-    int nadj = adjSeed.size();
     rhs.resize(0);
+    rhs_ind.resize(0);
     row_offset.resize(1);
     for(int d=0; d<nadj; ++d){
-      const MX& x_dot = *adjSeed[d][0];      
-      rhs.push_back(x_dot);
-      row_offset.push_back(row_offset.back()+x_dot.size1());
+      MX& X_bar = *adjSeed[d][0];
+      
+      // Simplifiy if zero
+      if(CasADi::isZero(X_bar)){
+        if(adjSeed[d][0]!=adjSens[d][0]){
+          *adjSens[d][0] = X_bar;
+          X_bar = MX();
+        }
+      } else {
+        rhs.push_back(X_bar);
+        rhs_ind.push_back(d);
+        row_offset.push_back(row_offset.back()+X_bar.size1());
+
+        // Delete seed
+        X_bar = MX();
+      }
     }
 
-    // Solve for all directions at once
-    lhs = A->getSolve(vertcat(rhs),!Tr,linear_solver_);
+    if(!rhs.empty()){
+      // Solve for all directions at once
+      rhs = vertsplit(A->getSolve(vertcat(rhs),!Tr,linear_solver_),row_offset);
     
-    // Split up the sensitivities
-    for(int d=0; d<nadj; ++d){
-      MX r_bar = lhs(Slice(row_offset[d],row_offset[d+1]),Slice());      
-      *adjSens[d][0] += r_bar;
-      *adjSens[d][1] -= mul(trans(x),r_bar);
+      for(int i=0; i<rhs.size(); ++i){
+        int d = rhs_ind[i];
+
+        // Propagate to A
+        if(Tr){
+          *adjSens[d][1] -= mul(trans(X),rhs[i]);
+        } else {
+          *adjSens[d][1] -= mul(trans(rhs[i]),X);
+        }
+
+        // Propagate to B
+        if(adjSeed[d][0]==adjSens[d][0]){
+          *adjSens[d][0] = rhs[i];
+        } else {
+          *adjSens[d][0] += rhs[i];
+        }
+      }
     }
   }
   
-  //  template<bool Tr>
-  //  void Solve<Tr>::propagateSparsity(DMatrixPtrV& input, DMatrixPtrV& output, bool fwd){
-  //    casadi_error("not implemented");
-  //  }
-
   template<bool Tr>
-  void Solve<Tr>::generateOperation(std::ostream &stream, const std::vector<std::string>& arg, const std::vector<std::string>& res, CodeGenerator& gen) const{
-    // Check if inplace
-    bool inplace = arg.at(0).compare(res.front())==0;
+  void Solve<Tr>::propagateSparsity(DMatrixPtrV& input, DMatrixPtrV& output, bool fwd){
+    // Sparsity of the rhs
+    const CRSSparsity& sp = input[0]->sparsity();
+    const vector<int>& rowind = sp.rowind();
+    int nrhs = sp.size1();
+    int nnz = input[1]->size();
 
-    // Copy first argument if not inplace
-    if(!inplace){      
-      stream << "  for(i=0; i<" << this->size() << "; ++i) " << res.front() << "[i]=" << arg.at(0) << "[i];" << endl;
+    // Get pointers to data
+    bvec_t* B_ptr = reinterpret_cast<bvec_t*>(input[0]->ptr());
+    bvec_t* A_ptr = reinterpret_cast<bvec_t*>(input[1]->ptr());
+    bvec_t* X_ptr = reinterpret_cast<bvec_t*>(output[0]->ptr());
+
+    if(fwd){
+    
+      // Get dependencies of all A elements
+      bvec_t A_dep = 0;
+      for(int i=0; i<nnz; ++i){
+        A_dep |= *A_ptr;
+      }
+
+      // One right hand side at a time
+      for(int i=0; i<nrhs; ++i){
+
+        // Add dependencies on B
+        bvec_t AB_dep = A_dep;
+        for(int k=rowind[i]; k<rowind[i+1]; ++k){
+          AB_dep |= *B_ptr++;
+        }
+
+        // Propagate to X
+        for(int k=rowind[i]; k<rowind[i+1]; ++k){
+          *X_ptr++ = AB_dep;
+        }
+      }
+    } else {
+
+      // Dependencies of all X
+      bvec_t X_dep_all = 0;
+
+      // One right hand side at a time
+      for(int i=0; i<nrhs; ++i){
+
+        // Everything that depends on X
+        bvec_t X_dep = 0;
+        for(int k=rowind[i]; k<rowind[i+1]; ++k){
+          X_dep |= *X_ptr;
+          *X_ptr++ = 0;
+        }
+
+        // Propagate to B
+        for(int k=rowind[i]; k<rowind[i+1]; ++k){
+          *B_ptr++ |= X_dep;
+        }
+
+        // Collect dependencies on all X
+        X_dep_all |= X_dep;
+      }
+
+      // Propagate to A
+      for(int i=0; i<nnz; ++i){
+        *A_ptr++ |= X_dep_all;
+      }
     }
-
-    casadi_error("not implemented");
   }
 
   template<bool Tr>

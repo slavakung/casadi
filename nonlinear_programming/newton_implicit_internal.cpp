@@ -55,10 +55,15 @@ namespace CasADi {
   
     // Perform the Newton iterations
     int iter=0;
+    
+    bool success = true;
+    
     while(true){
       // Break if maximum number of iterations already reached
       if (iter >= max_iter_) {
         log("evaluate","Max. iterations reached.");
+        stats_["return_status"] = "max_iteration_reached";
+        success = false;
         break;
       }
 
@@ -95,7 +100,7 @@ namespace CasADi {
       linsol_.prepare();
     
       // Solve against F
-      linsol_.solve(&F.front(),1,false);
+      linsol_.solve(&F.front(),1,true);
 
       if (monitored("step")) {
         std::cout << "  step = " << F << std::endl;
@@ -119,6 +124,8 @@ namespace CasADi {
   
     // Store the iteration count
     if (gather_stats_) stats_["iter"] = iter; 
+    
+    if (success) stats_["return_status"] = "success";
   
     // Factorization up-to-date
     fact_up_to_date_ = true;

@@ -32,13 +32,21 @@
 namespace CasADi{
 
   /** \brief  concatenate vertically */
-  MX vertcat(const std::vector<MX>& comp);
+  MX vertcat(const std::vector<MX>& x);
+
+  /** \brief  concatenate vertically */
+  std::vector<MX> vertsplit(const MX& x, const std::vector<int>& output_offset);
 
   /** \brief  concatenate horizontally */
   MX horzcat(const std::vector<MX>& comp);
   
   /** \brief Construct a matrix from a list of list of blocks.*/
   MX blockcat(const std::vector< std::vector<MX > > &v);
+
+#ifndef SWIG
+  /** \brief Construct a matrix from a list of list of blocks.*/
+  MX blockcat(const MX &A,const MX &B,const MX &C,const MX &D);
+#endif // SWIG
 
   /** \brief  concatenate vertically while vectorizing all arguments with vec */
   MX veccat(const std::vector<MX>& comp);
@@ -226,6 +234,8 @@ namespace CasADi{
   */
   MX diag(const MX& x);
 
+  /** \brief   Construct a matrix with given block on the diagonal */
+  MX blkdiag(const std::vector<MX> &A);
 
   /** \brief Return a row-wise summation of elements */
   MX sumRows(const MX &x);
@@ -270,7 +280,12 @@ namespace CasADi{
 
   //@}
 
-  /** \brief  Check if two expressions are equal */
+  /** \brief  Check if two expressions are equal
+  *
+  *  Might very well give false negatives
+  *
+  *   Note: does not work when CasadiOptions.setSimplificationOnTheFly(False) was called
+   */
   bool isEqual(const MX& ex1,const MX &ex2);
 
   /** \brief Get a string representation for a binary MX, using custom arguments */
@@ -310,16 +325,6 @@ namespace CasADi{
   /** \brief Print compact, introducing new variables for shared subexpressions */
   void printCompact(const MX& ex, std::ostream &stream=std::cout);
 
-  /** \brief  Solve a system of equations: A*x = b 
-   * The solve routine works similar to Matlab's backslash when A is square and nonsingular.
-   * This algorithm is under development.
-   */
-  MX solve(const MX& A, const MX& b, const LinearSolver& linear_solver=LinearSolver());
-
-  /** \brief  Solve a nonlinear system of equations: f(z,x0,x1,...) = 0 <=> z = ff(x0,x1,...) 
-   */
-  MX nl_solve(const std::vector<MX>& x, const ImplicitFunction& implicit_function);
-
   //@{
   /** \brief Calculate jacobian via source code transformation
 
@@ -334,6 +339,12 @@ namespace CasADi{
 
   /** \brief Matrix inverse (experimental) */
   MX inv(const MX& A);
+
+  /** \brief Get all symbols contained in the supplied expression
+  * Get all symbols on which the supplied expression depends
+  * \see MXFunction::getFree()
+  */
+  std::vector<MX> getSymbols(const MX& e);
 
 } // namespace CasADi
 

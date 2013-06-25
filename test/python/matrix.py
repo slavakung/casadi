@@ -506,7 +506,8 @@ class Matrixtests(casadiTestCase):
       a[i,i] = i+1
 
     self.checkarray(det(a)/npy_det(a),1,"det()")
-    
+   
+  @skip(not CasadiOptions.getSimplificationOnTheFly()) 
   def test_inv_sparsity(self):
     self.message("sparsity pattern of inverse")
 
@@ -814,6 +815,32 @@ class Matrixtests(casadiTestCase):
     self.assertTrue(isRegular(DMatrix([1,2])))
     self.assertFalse(isRegular(DMatrix([1,Inf])))
     self.assertFalse(isRegular(DMatrix.nan(2)))
+    
+  def test_sizes(self):
+    self.assertEqual(sp_diag(10).sizeD(),10)
+    self.assertEqual(sp_diag(10).sizeU(),10)
+    self.assertEqual(sp_diag(10).sizeL(),10)
+    self.assertEqual(sp_dense(10,10).sizeL(),10*11/2)
+    self.assertEqual(sp_dense(10,10).sizeU(),10*11/2)
+    self.assertEqual(sp_dense(10,10).sizeD(),10)
+    
+    self.assertEqual(sparse(DMatrix([[1,1,0],[1,0,1],[0,0,0]])).sizeD(),1)
+    self.assertEqual(sparse(DMatrix([[1,1,0],[1,0,1],[0,0,0]])).sizeL(),2)
+    self.assertEqual(sparse(DMatrix([[1,1,0],[1,0,1],[0,0,0]])).sizeU(),3)
+    
+  def test_tril2symm(self):
+    a = DMatrix(sp_tril(3),range(sp_tril(3).size()))
+    s = tril2symm(a)
+    self.checkarray(s,DMatrix([[0,1,3],[1,2,4],[3,4,5]]))
+    
+    with self.assertRaises(Exception):
+      tril2symm(DMatrix.ones(5,3))
+    
+    print DMatrix.ones(5,5).sizeU()-DMatrix.ones(5,5).sizeD()
+    
+    with self.assertRaises(Exception):
+      tril2symm(DMatrix.ones(5,5))
+    
     
 if __name__ == '__main__':
     unittest.main()

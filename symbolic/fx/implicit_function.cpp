@@ -52,9 +52,5 @@ namespace CasADi{
     return (*this)->linsol_;
   }
 
-
 } // namespace CasADi
-
-  
-
 

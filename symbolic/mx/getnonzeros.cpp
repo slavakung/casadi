@@ -64,7 +64,7 @@ namespace CasADi{
       const vector<T>& fseed = fwdSeed[d][0]->data();
       typename vector<T>::iterator fsens_it = fwdSens[d][0]->begin();
       for(vector<int>::const_iterator k=nz_.begin(); k!=nz_.end(); ++k){
-             *fsens_it++ = *k>=0 ? fseed[*k] : 0;
+        *fsens_it++ = *k>=0 ? fseed[*k] : 0;
       }
     }
       
@@ -110,7 +110,7 @@ namespace CasADi{
       const T* fseed_stop = getPtr(fseed) + s_.stop_;
       T* fsens_ptr = getPtr(fwdSens[d][0]->data());
       for(; fseed_ptr != fseed_stop; fseed_ptr += s_.step_){
-             *fsens_ptr++ = *fseed_ptr;
+        *fsens_ptr++ = *fseed_ptr;
       }
     }
       
@@ -266,92 +266,79 @@ namespace CasADi{
     int nadj = adjSeed.size();
 
     // Output sparsity
-    const CRSSparsity &osp = sparsity();
+    const CRSSparsity& osp = sparsity();
     const vector<int>& ocol = osp.col();
     vector<int> orow = osp.getRow();
     
     // Input sparsity
-    const CRSSparsity &isp = dep().sparsity();
+    const CRSSparsity& isp = dep().sparsity();
     const vector<int>& icol = isp.col();
     vector<int> irow = isp.getRow();
-      
-    // We next need to resort the assignment vector by inputs instead of outputs
-    // Start by counting the number of input nonzeros corresponding to each output nonzero
-    vector<int> inz_count(icol.size()+1,0);
-    for(vector<int>::const_iterator it=nz.begin(); it!=nz.end(); ++it){
-      casadi_assert_message(*it>=0,"Not implemented");
-      inz_count[*it+1]++;
-    }
-    
-    // Cumsum to get index offset for input nonzero
-    for(int i=0; i<icol.size(); ++i){
-      inz_count[i+1] += inz_count[i];
-    }
-    
-    // Get the order of assignments
-    vector<int> nz_order(nz.size());
-    for(int k=0; k<nz.size(); ++k){
-      // Save the new index
-      nz_order[inz_count[nz[k]]++] = k;
-    }
-    
-    // Find out which elements are given
-    vector<int>& el_input = inz_count; // Reuse memory
-    el_input.resize(nz.size());
-    for(int k=0; k<nz.size(); ++k){
-      // Get output nonzero
-      int inz_k = nz[nz_order[k]];
-      
-      // Get element (note: may contain duplicates)
-      el_input[k] = irow[inz_k] + icol[inz_k]*isp.size1();
-    }
+
+    // Get all input elements
+    vector<int> el_input;
+    isp.getElements(el_input,false);
     
     // Sparsity pattern being formed and corresponding nonzero mapping
-    vector<int> r_rowind, r_col, r_nz;
+    vector<int> r_rowind, r_col, r_nz, r_ind;
         
     // Nondifferentiated function and forward sensitivities
     int first_d = output_given ? 0 : -1;
     for(int d=first_d; d<nfwd; ++d){
 
       // Get references to arguments and results
-      MX& arg = d<0 ? *input[0] : *fwdSeed[d][0];
+      const MX& arg = d<0 ? *input[0] : *fwdSeed[d][0];
       MX& res = d<0 ? *output[0] : *fwdSens[d][0];      
       
       // Get the matching nonzeros
-      r_nz.resize(el_input.size());
-      copy(el_input.begin(),el_input.end(),r_nz.begin());
-      arg.sparsity().getNZInplace(r_nz);
-      
-      // Add to sparsity pattern
-      int n=0;
-      r_col.clear();
+      r_ind.resize(el_input.size());
+      copy(el_input.begin(),el_input.end(),r_ind.begin());
+      arg.sparsity().getNZInplace(r_ind);
+
+      // Sparsity pattern for the result
       r_rowind.resize(osp.size1()+1); // Row count
       fill(r_rowind.begin(),r_rowind.end(),0);
+      r_col.clear();
+
+      // Perform the assignments
+      r_nz.clear();
       for(int k=0; k<nz.size(); ++k){
-        if(r_nz[k]!=-1){
-          r_nz[n++] = r_nz[k];
-          r_col.push_back(ocol[nz_order[k]]);
-          r_rowind[1+orow[nz_order[k]]]++;
-        }
+
+        // Get the corresponding nonzero for the input
+        int el = nz[k];
+        
+        // Skip if zero assignment
+        if(el==-1) continue;
+
+        // Get the corresponding nonzero in the argument
+        int el_arg = r_ind[el];
+        
+        // Skip if no argument
+        if(el_arg==-1) continue;
+
+        // Save the assignment
+        r_nz.push_back(el_arg);
+
+        // Get the corresponding element
+        int i=orow[k], j=ocol[k];
+
+        // Add to sparsity pattern
+        r_col.push_back(j);
+        r_rowind[1+i]++;
       }
-      r_nz.resize(n);
-      for(int i=1; i<r_rowind.size(); ++i) r_rowind[i] += r_rowind[i-1]; // row count -> row offset
+      
+      // row count -> row offset
+      for(int i=1; i<r_rowind.size(); ++i) r_rowind[i] += r_rowind[i-1]; 
 
       // Create a sparsity pattern from vectors
-      CRSSparsity f_sp(osp.size1(),osp.size2(),r_col,r_rowind);
       if(r_nz.size()==0){
-        res = MX::zeros(f_sp);
+        res = MX::sparse(osp.shape());
       } else {
+        CRSSparsity f_sp(osp.size1(),osp.size2(),r_col,r_rowind);
         res = arg->getGetNonzeros(f_sp,r_nz);
       }
     }
 
-    // Quick return if no adjoints
-    if(nadj==0) return;
-
-    // Get all input elements (this time without duplicates)
-    isp.getElements(el_input,false);
-    
     // Adjoint sensitivities
     for(int d=0; d<nadj; ++d){
 
@@ -381,22 +368,21 @@ namespace CasADi{
       if(!elements_to_add) continue;
      
       // Get the nz locations in the adjoint sensitivity corresponding to the inputs
-      vector<int> &r_nz2 = r_col; // Reuse memory
-      r_nz2.resize(el_input.size());
-      copy(el_input.begin(),el_input.end(),r_nz2.begin());
-      asens0.sparsity().getNZInplace(r_nz2);
+      r_ind.resize(el_input.size());
+      copy(el_input.begin(),el_input.end(),r_ind.begin());
+      asens0.sparsity().getNZInplace(r_ind);
       
       // Enlarge the sparsity pattern of the sensitivity if not all additions fit
       for(vector<int>::iterator k=r_nz.begin(); k!=r_nz.end(); ++k){
-        if(*k>=0 && r_nz2[nz[*k]]<0){
+        if(*k>=0 && r_ind[nz[*k]]<0){
           
           // Create a new pattern which includes both the the previous seed and the addition
           CRSSparsity sp = asens0.sparsity().patternUnion(dep().sparsity());
           asens0 = asens0->getSetSparse(sp);
 
           // Recalculate the nz locations in the adjoint sensitivity corresponding to the inputs
-          copy(el_input.begin(),el_input.end(),r_nz2.begin());
-          asens0.sparsity().getNZInplace(r_nz2);
+          copy(el_input.begin(),el_input.end(),r_ind.begin());
+          asens0.sparsity().getNZInplace(r_ind);
 
           break;
         }
@@ -405,7 +391,7 @@ namespace CasADi{
       // Have r_nz point to locations in the sensitivity instead of the output
       for(vector<int>::iterator k=r_nz.begin(); k!=r_nz.end(); ++k){
         if(*k>=0){
-          *k = r_nz2[nz[*k]];
+          *k = r_ind[nz[*k]];
         }
       }
 

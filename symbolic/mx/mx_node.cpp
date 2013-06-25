@@ -35,7 +35,6 @@
 #include "setnonzeros.hpp"
 #include "set_sparse.hpp"
 #include "solve.hpp"
-#include "nonlinear_solve.hpp"
 #include "unary_mx.hpp"
 #include "binary_mx.hpp"
 #include "determinant.hpp"
@@ -43,6 +42,7 @@
 #include "inner_prod.hpp"
 #include "norm.hpp"
 #include "vertcat.hpp"
+#include "vertsplit.hpp"
 
 // Template implementations
 #include "setnonzeros_impl.hpp"
@@ -376,14 +376,10 @@ namespace CasADi{
     
   MX MXNode::getSolve(const MX& r, bool tr, const LinearSolver& linear_solver) const{
     if(tr){
-      return MX::create(new Solve<true>(r,shared_from_this<MX>(),linear_solver));
+      return MX::create(new Solve<true>(densify(r),shared_from_this<MX>(),linear_solver));
     } else {
-      return MX::create(new Solve<false>(r,shared_from_this<MX>(),linear_solver));
+      return MX::create(new Solve<false>(densify(r),shared_from_this<MX>(),linear_solver));
     }
-  }
-
-  MX MXNode::getNonlinearSolve(const std::vector<MX>& x, const ImplicitFunction& implicit_function){
-    return MX::create(new NonlinearSolve(x,implicit_function));
   }
 
   MX MXNode::getGetNonzeros(const CRSSparsity& sp, const std::vector<int>& nz) const{
@@ -406,22 +402,30 @@ namespace CasADi{
   }
 
   MX MXNode::getSetNonzeros(const MX& y, const std::vector<int>& nz) const{
-    if(nz.size()==0){
-      return y;
-    } else {
-      MX ret;
-      if(Slice::isSlice(nz)){
-        ret = MX::create(new SetNonzerosSlice<false>(y,shared_from_this<MX>(),Slice(nz)));
-      } else if(Slice::isSlice2(nz)){
-        Slice outer;
-        Slice inner(nz,outer);
-        ret = MX::create(new SetNonzerosSlice2<false>(y,shared_from_this<MX>(),inner,outer));
-      } else {
-        ret = MX::create(new SetNonzerosVector<false>(y,shared_from_this<MX>(),nz));
-      }
-      simplify(ret);
-      return ret;
+    // Check if any element needs to be set at all
+    bool set_any = false;
+    for(vector<int>::const_iterator i=nz.begin(); i!=nz.end() && !set_any; ++i){
+      set_any = *i >= 0;
     }
+
+    // Quick return
+    if(!set_any){
+      return y;
+    }
+
+    // Check if slice
+    MX ret;
+    if(Slice::isSlice(nz)){
+      ret = MX::create(new SetNonzerosSlice<false>(y,shared_from_this<MX>(),Slice(nz)));
+    } else if(Slice::isSlice2(nz)){
+      Slice outer;
+      Slice inner(nz,outer);
+      ret = MX::create(new SetNonzerosSlice2<false>(y,shared_from_this<MX>(),inner,outer));
+    } else {
+      ret = MX::create(new SetNonzerosVector<false>(y,shared_from_this<MX>(),nz));
+    }
+    simplify(ret);
+    return ret;
   }
 
 
@@ -504,82 +508,87 @@ namespace CasADi{
   }
 
   MX MXNode::getBinary(int op, const MX& y, bool scX, bool scY) const{
-    // If identically zero due to one argumebt being zero
-    if((operation_checker<F0XChecker>(op) && isZero()) ||(operation_checker<FX0Checker>(op) && y->isZero())){
-      return MX::zeros(sparsity());
-    }
+  
+    if (CasadiOptions::simplification_on_the_fly) {
+    
+      // If identically zero due to one argumebt being zero
+      if((operation_checker<F0XChecker>(op) && isZero()) ||(operation_checker<FX0Checker>(op) && y->isZero())){
+        return MX::zeros(sparsity());
+      }
 
-    // Handle special operations (independent of type)
-    switch(op){
-    case OP_ADD:
-      if(y.isEqual(this,maxDepth())) return getUnary(OP_TWICE);
-      break;
-    case OP_SUB:
-    case OP_NE:
-    case OP_LT:
-      if(y.isEqual(this,maxDepth())) return MX::zeros(sparsity());
-      break;
-    case OP_DIV:
-      if(y->isZero()) return MX::nan(sparsity());
-      // fall-through
-    case OP_EQ:
-    case OP_LE:
-      if(y.isEqual(this,maxDepth())) return MX::ones(sparsity());
-      break;
-    case OP_MUL:
-      if(y.isEqual(this,maxDepth())) return getUnary(OP_SQ);
-      break;
-    default: break; // no rule
-    }
+      // Handle special operations (independent of type)
+      switch(op){
+      case OP_ADD:
+        if(y.isEqual(this,maxDepth())) return getUnary(OP_TWICE);
+        break;
+      case OP_SUB:
+      case OP_NE:
+      case OP_LT:
+        if(y.isEqual(this,maxDepth())) return MX::zeros(sparsity());
+        break;
+      case OP_DIV:
+        if(y->isZero()) return MX::nan(sparsity());
+        // fall-through
+      case OP_EQ:
+      case OP_LE:
+        if(y.isEqual(this,maxDepth())) return MX::ones(sparsity());
+        break;
+      case OP_MUL:
+        if(y.isEqual(this,maxDepth())) return getUnary(OP_SQ);
+        break;
+      default: break; // no rule
+      }
 
-    // Handle special cases for the second argument
-    switch(y->getOp()){
-    case OP_CONST:
-      // Make the constant the first argument, if possible
-      if(getOp()!=OP_CONST && operation_checker<CommChecker>(op)){
-            return y->getBinary(op,shared_from_this<MX>(),scY,scX);
-      } else {
-        switch(op) {
-        case OP_CONSTPOW: 
-          if(y->isValue(-1)) return getUnary(OP_INV);
-          else if(y->isValue(0)) return MX::ones(sparsity());
-          else if(y->isValue(1)) return shared_from_this<MX>();
-          else if(y->isValue(2)) return getUnary(OP_SQ);
-          break;
-        case OP_ADD:
-        case OP_SUB:
-          if(y->isZero()) return shared_from_this<MX>();
-          break;
-        case OP_MUL:
-          if(y->isValue(1)) return shared_from_this<MX>();
-          break;
-        case OP_DIV:
-          if(y->isValue(1)) return shared_from_this<MX>();
-          else if(y->isValue(0.5)) return getUnary(OP_TWICE);
-          break;
-        default: break; // no rule
+      // Handle special cases for the second argument
+      switch(y->getOp()){
+      case OP_CONST:
+        // Make the constant the first argument, if possible
+        if(getOp()!=OP_CONST && operation_checker<CommChecker>(op)){
+              return y->getBinary(op,shared_from_this<MX>(),scY,scX);
+        } else {
+          switch(op) {
+          case OP_CONSTPOW: 
+            if(y->isValue(-1)) return getUnary(OP_INV);
+            else if(y->isValue(0)) return MX::ones(sparsity());
+            else if(y->isValue(1)) return shared_from_this<MX>();
+            else if(y->isValue(2)) return getUnary(OP_SQ);
+            break;
+          case OP_ADD:
+          case OP_SUB:
+            if(y->isZero()) return shared_from_this<MX>();
+            break;
+          case OP_MUL:
+            if(y->isValue(1)) return shared_from_this<MX>();
+            break;
+          case OP_DIV:
+            if(y->isValue(1)) return shared_from_this<MX>();
+            else if(y->isValue(0.5)) return getUnary(OP_TWICE);
+            break;
+          default: break; // no rule
+          }
         }
+        break;
+      case OP_NEG:
+        if(op==OP_ADD){
+          return getBinary(OP_SUB,y->dep(),scX,scY);
+        } else if(op==OP_SUB){
+          return getBinary(OP_ADD,y->dep(),scX,scY);
+        } else if(op==OP_MUL){
+          return -getBinary(OP_MUL,y->dep(),scX,scY);
+        } else if(op==OP_DIV){
+          return -getBinary(OP_DIV,y->dep(),scX,scY);
+        }
+        break;
+      case OP_INV:
+        if(op==OP_MUL){
+          return getBinary(OP_DIV,y->dep(),scX,scY);
+        } else if(op==OP_DIV){
+          return getBinary(OP_MUL,y->dep(),scX,scY);
+        }
+        break;
+      default: break; // no rule
       }
-      break;
-    case OP_NEG:
-      if(op==OP_ADD){
-        return getBinary(OP_SUB,y->dep(),scX,scY);
-      } else if(op==OP_SUB){
-        return getBinary(OP_ADD,y->dep(),scX,scY);
-      } else if(op==OP_MUL){
-        return -getBinary(OP_MUL,y->dep(),scX,scY);
-      } else if(op==OP_DIV){
-        return -getBinary(OP_DIV,y->dep(),scX,scY);
-      }
-      break;
-    case OP_INV:
-      if(op==OP_MUL){
-        return getBinary(OP_DIV,y->dep(),scX,scY);
-      } else if(op==OP_DIV){
-        return getBinary(OP_MUL,y->dep(),scX,scY);
-      }
-      break;
-    default: break; // no rule
+    
     }
 
     if(scX){
@@ -699,6 +708,21 @@ namespace CasADi{
       return MX::create(new Vertcat(c_split));
     }
   }
+
+  std::vector<MX> MXNode::getVertsplit(const std::vector<int>& output_offset) const{
+    return MX::createMultipleOutput(new Vertsplit(shared_from_this<MX>(),output_offset));
+  }
+
+  void MXNode::clearVector(const std::vector<std::vector<MX*> > v){
+    for(int i=0; i<v.size(); ++i){
+      for(int j=0; j<v[i].size(); ++j){
+        if(v[i][j]!= 0){
+          *v[i][j] = MX();
+        }
+      }
+    }
+  }
+
 
 } // namespace CasADi
 

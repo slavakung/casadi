@@ -248,33 +248,33 @@ class typemaptests(casadiTestCase):
 
         f=function([z],[r])
         f.init()
-        f.input().set(dummy[0:f.input().size()])
+        f.setInput(dummy[0:f.input().size()])
         f.evaluate()
         
         f_=function([z],[z])
         f_.init()
-        f_.input().set(dummy[0:f.input().size()])
+        f_.setInput(dummy[0:f.input().size()])
         f_.evaluate()
         
 
-        self.checkarray(fun(f_.output(),DMatrix(s)),f.output(),"operation")
+        self.checkarray(fun(f_.getOutput(),DMatrix(s)),f.getOutput(),"operation")
       else:
         dummy = [1.3,2.7,9.4,1.0]
         dummy2 = [0.3,2.4,1.4,1.7]
         
         f=function([z,s],[r])
         f.init()
-        f.input(0).set(dummy[0:f.input(0).size()])
-        f.input(1).set(dummy2[0:f.input(1).size()])
+        f.setInput(dummy[0:f.input(0).size()],0)
+        f.setInput(dummy2[0:f.input(1).size()],1)
         f.evaluate()
         
         f_=function([z,s],[z,s])
         f_.init()
-        f_.input(0).set(dummy[0:f.input(0).size()])
-        f_.input(1).set(dummy2[0:f.input(1).size()])
+        f_.setInput(dummy[0:f.input(0).size()],0)
+        f_.setInput(dummy2[0:f.input(1).size()],1)
         f_.evaluate()
 
-        self.checkarray(fun(f_.output(0),f_.output(1)),f.output(),"operation")
+        self.checkarray(fun(f_.getOutput(0),f_.getOutput(1)),f.getOutput(),"operation")
     
     
     def tests(z,s):
@@ -553,15 +553,15 @@ class typemaptests(casadiTestCase):
     
     f=SXFunction([vertcat([x,y])],[C+N])
     f.init()
-    f.input().set([7,13])
+    f.setInput([7,13])
     f.evaluate()
-    self.checkarray(f.output(),matrix([14,26]).T,"addition")
+    self.checkarray(f.getOutput(),matrix([14,26]).T,"addition")
     
     f=SXFunction([vertcat([x,y])],[N+C])
     f.init()
-    f.input().set([7,13])
+    f.setInput([7,13])
     f.evaluate()
-    self.checkarray(f.output(),matrix([14,26]).T,"addition")
+    self.checkarray(f.getOutput(),matrix([14,26]).T,"addition")
     
     self.message(":DMatrix")
     D=DMatrix([7,13])
@@ -579,15 +579,15 @@ class typemaptests(casadiTestCase):
       
     f=SXFunction([vertcat([x,y])],[C+D])
     f.init()
-    f.input().set([1,4])
+    f.setInput([1,4])
     f.evaluate()
-    self.checkarray(f.output(),matrix([8,17]).T,"addition")
+    self.checkarray(f.getOutput(),matrix([8,17]).T,"addition")
     
     f=SXFunction([vertcat([x,y])],[D+C])
     f.init()
-    f.input().set([1,4])
+    f.setInput([1,4])
     f.evaluate()
-    self.checkarray(f.output(),matrix([8,17]).T,"addition")
+    self.checkarray(f.getOutput(),matrix([8,17]).T,"addition")
 
   def test_DMatrixSXMatrixcast(self):
     self.message("Casting DMatrix to SXMatrix")
@@ -752,8 +752,8 @@ class typemaptests(casadiTestCase):
     integr.setOption("tf",2.3)
     integr.init()
 
-    integr.input("x0").set(7.1)
-    integr.input("p").set(2)
+    integr.setInput(7.1,"x0")
+    integr.setInput(2,"p")
 
     integr.evaluate(1,1)
 
@@ -767,8 +767,8 @@ class typemaptests(casadiTestCase):
     integr.setOption("tf",2.3)
     integr.init()
 
-    integr.input("x0").set(7.1)
-    integr.input("p").set(2)
+    integr.setInput(7.1,"x0")
+    integr.setInput(2,"p")
 
     integr.evaluate(1,1)
 
@@ -783,8 +783,8 @@ class typemaptests(casadiTestCase):
     integr.setOption("tf",2.3)
     integr.init()
 
-    integr.input("x0").set(7.1)
-    integr.input("p").set(2)
+    integr.setInput(7.1,"x0")
+    integr.setInput(2,"p")
 
     integr.evaluate(1,1)
 
@@ -799,8 +799,8 @@ class typemaptests(casadiTestCase):
     integr.setOption("tf",2.3)
     integr.init()
 
-    integr.input("x0").set(7.1)
-    integr.input("p").set(2)
+    integr.setInput(7.1,"x0")
+    integr.setInput(2,"p")
 
     integr.evaluate(1,1)
 
@@ -826,7 +826,7 @@ class typemaptests(casadiTestCase):
         return DMatrix([4])
         
     f.setInput(Foo())
-    self.assertEqual(f.input(),4)
+    self.assertEqual(f.getInput(),4)
 
     class Foo:
       def __DMatrix__(self):

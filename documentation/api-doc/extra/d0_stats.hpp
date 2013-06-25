@@ -1,7 +1,25 @@
+/** \class CasADi::NLPImplicitInternal
+\n
+\par
+<a name='stats'></a><table>
+<caption>List of available stats</caption>
+<tr><th>Id</th><th>Used in</th></tr>
+<tr><td>nlp_solver_stats</td><td>CasADi::NLPImplicitInternal</td></tr>
+</table>
+*/
+/** \class CasADi::NLPImplicitSolver
+\n
+\par
+<a name='stats'></a><table>
+<caption>List of available stats</caption>
+<tr><th>Id</th><th>Used in</th></tr>
+<tr><td>nlp_solver_stats</td><td>CasADi::NLPImplicitInternal</td></tr>
+</table>
+*/
 /** \class CasADi::WorhpInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>t_callback_fun</td><td>CasADi::WorhpInternal</td></tr>
@@ -17,7 +35,7 @@
 /** \class CasADi::WorhpSolver
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>t_callback_fun</td><td>CasADi::WorhpInternal</td></tr>
@@ -33,7 +51,7 @@
 /** \class CasADi::CVodesInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>augmented_stats</td><td>CasADi::IntegratorInternal</td></tr>
@@ -46,7 +64,7 @@
 /** \class CasADi::CVodesIntegrator
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>augmented_stats</td><td>CasADi::IntegratorInternal</td></tr>
@@ -59,7 +77,7 @@
 /** \class CasADi::SCPgenInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>iter_count</td><td>CasADi::SCPgenInternal</td></tr>
@@ -68,7 +86,7 @@
 /** \class CasADi::SCPgen
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>iter_count</td><td>CasADi::SCPgenInternal</td></tr>
@@ -77,7 +95,7 @@
 /** \class CasADi::IpoptInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>alpha_du</td><td>CasADi::IpoptInternal</td></tr>
@@ -110,7 +128,7 @@
 /** \class CasADi::IpoptSolver
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>alpha_du</td><td>CasADi::IpoptInternal</td></tr>
@@ -143,7 +161,7 @@
 /** \class CasADi::IdasInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>augmented_stats</td><td>CasADi::IntegratorInternal</td></tr>
@@ -156,7 +174,7 @@
 /** \class CasADi::IdasIntegrator
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>augmented_stats</td><td>CasADi::IntegratorInternal</td></tr>
@@ -169,25 +187,27 @@
 /** \class CasADi::NewtonImplicitInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>iter</td><td>CasADi::NewtonImplicitInternal</td></tr>
+<tr><td>return_status</td><td>CasADi::NewtonImplicitInternal</td></tr>
 </table>
 */
 /** \class CasADi::NewtonImplicitSolver
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>iter</td><td>CasADi::NewtonImplicitInternal</td></tr>
+<tr><td>return_status</td><td>CasADi::NewtonImplicitInternal</td></tr>
 </table>
 */
 /** \class CasADi::IntegratorInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>augmented_stats</td><td>CasADi::IntegratorInternal</td></tr>
@@ -196,7 +216,7 @@
 /** \class CasADi::Integrator
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>augmented_stats</td><td>CasADi::IntegratorInternal</td></tr>
@@ -205,7 +225,7 @@
 /** \class CasADi::SQPInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>iter_count</td><td>CasADi::SQPInternal</td></tr>
@@ -214,7 +234,7 @@
 /** \class CasADi::SQPMethod
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>iter_count</td><td>CasADi::SQPInternal</td></tr>
@@ -223,7 +243,7 @@
 /** \class CasADi::ParallelizerInternal
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>max_threads</td><td>CasADi::ParallelizerInternal</td></tr>
@@ -238,7 +258,7 @@
 /** \class CasADi::Parallelizer
 \n
 \par
-<table>
+<a name='stats'></a><table>
 <caption>List of available stats</caption>
 <tr><th>Id</th><th>Used in</th></tr>
 <tr><td>max_threads</td><td>CasADi::ParallelizerInternal</td></tr>

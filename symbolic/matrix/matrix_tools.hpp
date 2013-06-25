@@ -26,6 +26,8 @@
 #include "matrix.hpp"
 #include <algorithm>
 
+#include "sparsity_tools.hpp"
+
 namespace CasADi{
 
 /// Transpose of a matrix
@@ -148,6 +150,13 @@ Matrix<T> vecNZ(const Matrix<T>& a);
 template<class T>
 Matrix<T> blockcat(const std::vector< std::vector<Matrix<T> > > &v);
 
+#ifndef SWIG
+/** \brief Construct a matrix from 4 blocks
+*/
+template<class T>
+Matrix<T> blockcat(const Matrix<T> &A,const Matrix<T> &B,const Matrix<T> &C,const Matrix<T> &D);
+#endif // SWIG
+
 /** \brief Concatenate a list of matrices vertically
 * Alternative terminology: vertical stack, vstack, vertical append, [a;b]
 */
@@ -249,6 +258,12 @@ int nnz(const Matrix<T>& ex);
 template<class T>
 int nnz_sym(const Matrix<T>& ex);
 
+/** \brief Check if two expressions are equal
+*
+*  Might very well give false negatives
+*
+*   Note: does not work when CasadiOptions.setSimplificationOnTheFly(False) was called
+*/
 template<class T>
 bool isEqual(const Matrix<T>& ex1,const Matrix<T> &ex2);
 
@@ -326,9 +341,21 @@ void makeDense(Matrix<T>& A);
 template<class T>
 Matrix<T> densify(const Matrix<T>& A);
 
+#ifndef SWIGOCTAVE
+/** \brief  Make a matrix dense */
+template<class T>
+Matrix<T> full(const Matrix<T>& A);
+#endif // SWIGOCTAVE
+
 /** \brief  Make a matrix sparse by removing numerical */
 template<class T>
 void makeSparse(Matrix<T>& A);
+
+#ifndef SWIGOCTAVE
+/** \brief  Make a matrix sparse by removing numerical */
+template<class T>
+Matrix<T> sparse(const Matrix<T>& A);
+#endif // SWIGOCTAVE
 
 /** \brief  Check if the matrix has any zero entries which are not structural zeros */
 template<class T>
@@ -649,6 +676,11 @@ Matrix<T> blockcat(const std::vector< std::vector<Matrix<T> > > &v) {
   for(int i=0; i<v.size(); ++i)
     ret.push_back(horzcat(v[i]));
   return vertcat(ret);
+}
+
+template<class T>
+Matrix<T> blockcat(const Matrix<T> &A,const Matrix<T> &B,const Matrix<T> &C,const Matrix<T> &D) {
+  return vertcat(horzcat(A,B),horzcat(C,D));
 }
 
 template<class T>
@@ -1010,30 +1042,15 @@ Matrix<T> diag(const Matrix<T>&A){
 /** \brief   Construct a matrix with given block on the diagonal */
 template<class T>
 Matrix<T> blkdiag(const std::vector< Matrix<T> > &A) {
-  int n = 0;
-  int m = 0;
-  
-  std::vector<int> rowind(1,0);
-  std::vector<int> col;
   std::vector<T> data;
   
-  int nz = 0;
+  std::vector<CRSSparsity> sp;
   for (int i=0;i<A.size();++i) {
     data.insert(data.end(),A[i].data().begin(),A[i].data().end());
-    const std::vector<int> &rowind_ = A[i].rowind();
-    const std::vector<int> &col_ = A[i].col();
-    for (int k=1;k<rowind_.size();++k) {
-      rowind.push_back(rowind_[k]+nz);
-    }
-    for (int k=0;k<col_.size();++k) {
-      col.push_back(col_[k]+m);
-    }
-    n+= A[i].size1();
-    m+= A[i].size2();
-    nz+= A[i].size();
+    sp.push_back(A[i].sparsity());
   }
   
-  return Matrix<T>(n,m,col,rowind,data);
+  return Matrix<T>(blkdiag(sp),data);
   
 }
 
@@ -1090,6 +1107,11 @@ Matrix<T> densify(const Matrix<T>& A){
 }
 
 template<class T>
+Matrix<T> full(const Matrix<T>& A){
+  return densify(A);
+}
+
+template<class T>
 void makeSparse(Matrix<T>& A){
   // Quick return if there are no structurally zero entries
   if(!hasNonStructuralZeros(A))
@@ -1120,6 +1142,13 @@ void makeSparse(Matrix<T>& A){
   
   // Save to A
   A = Asp;
+}
+
+template<class T>
+Matrix<T> sparse(const Matrix<T>& A){
+  Matrix<T> ret(A);
+  makeSparse(ret);
+  return ret;
 }
 
 template<class T>
@@ -1243,7 +1272,7 @@ void addMultiple(const Matrix<T>& A, const std::vector<T>& v, std::vector<T>& re
 %template(function_name) CasADi::function_name < T >;
 
 // Define template instanciations
-#define MATRIX_TOOLS_TEMPLATES(T) \
+#define MATRIX_TOOLS_TEMPLATES_COMMON(T) \
 MTT_INST(T,trans) \
 MTT_INST(T,mul) \
 MTT_INST(T,isConstant) \
@@ -1298,5 +1327,14 @@ MTT_INST(T,vecNZcat) \
 MTT_INST(T,project) \
 MTT_INST(T,sprank) 
 #endif //SWIG
+
+#ifdef SWIGOCTAVE
+#define MATRIX_TOOLS_TEMPLATES(T) MATRIX_TOOLS_TEMPLATES_COMMON(T)
+#else
+#define MATRIX_TOOLS_TEMPLATES(T) \
+MATRIX_TOOLS_TEMPLATES_COMMON(T) \
+MTT_INST(T,sparse) \
+MTT_INST(T,full)
+#endif //SWIGOCTAVE
 
 #endif // MATRIX_TOOLS_HPP

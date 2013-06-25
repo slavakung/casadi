@@ -110,9 +110,13 @@ namespace CasADi{
   }
 
   CRSSparsity sp_banded(int n, int p) {
-    throw CasadiException("sp_banded: Not implemented yet");
+    // This is not an efficient implementation
+    CRSSparsity ret(n,n);
+    for (int i=-p;i<=p;++i) {
+      ret = ret + sp_band(n,i);
+    }
+    return ret;
   }
-
 
   CRSSparsity sp_rowcol(const std::vector<int>& row, const std::vector<int>& col, int nrow, int ncol) {
     std::vector<int> rowind(nrow+1);
@@ -473,7 +477,68 @@ namespace CasADi{
     ret.getNZ(el,0);
     return ret;
   }
+  
+  CRSSparsity vertcat(const std::vector<CRSSparsity> & sp) {
+    CRSSparsity ret = sp[0];
+    for(int i=1; i<sp.size(); ++i) {
+      ret.append(sp[i]);
+    }
+    return ret;
+  }
+  
+  CRSSparsity vertcat(const CRSSparsity & a, const CRSSparsity & b) {
+    CRSSparsity ret = a;
+    ret.append(b);
+    return ret;
+  }
 
+  CRSSparsity horzcat(const std::vector<CRSSparsity> & sp) {
+    CRSSparsity ret = trans(sp[0]);
+    for(int i=1; i<sp.size(); ++i) {
+      ret.append(trans(sp[i]));
+    }
+    return trans(ret);
+  }
+  
+  CRSSparsity horzcat(const CRSSparsity & a, const CRSSparsity & b) {
+    CRSSparsity ret = trans(a);
+    ret.append(trans(b));
+    return trans(ret);
+  }
+  
+  CRSSparsity blkdiag(const std::vector< CRSSparsity > &v) {
+    int n = 0;
+    int m = 0;
+    
+    std::vector<int> rowind(1,0);
+    std::vector<int> col;
+    
+    int nz = 0;
+    for (int i=0;i<v.size();++i) {
+      const std::vector<int> &rowind_ = v[i].rowind();
+      const std::vector<int> &col_ = v[i].col();
+      for (int k=1;k<rowind_.size();++k) {
+        rowind.push_back(rowind_[k]+nz);
+      }
+      for (int k=0;k<col_.size();++k) {
+        col.push_back(col_[k]+m);
+      }
+      n+= v[i].size1();
+      m+= v[i].size2();
+      nz+= v[i].size();
+    }
+    
+    return CRSSparsity(n,m,col,rowind);
+  }
+  
+  CRSSparsity blkdiag(const CRSSparsity &a, const CRSSparsity &b) {
+    
+    std::vector<CRSSparsity> v;
+    v.push_back(a);
+    v.push_back(b);
+    
+    return blkdiag(v);
+  }
 
 } // namespace CasADi
 

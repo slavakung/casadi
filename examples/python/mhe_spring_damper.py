@@ -113,14 +113,14 @@ for i in range(N):
 for i in range(N-1):
   obj += mul([shooting["W",i].T,Q,shooting["W",i]])
 
-f_obj = SXFunction([shooting,parameters],[obj])
-f_obj.init()
 # Build the multiple shooting constraints
 g = []
 for i in range(N-1):
   g.append( shooting["X",i+1] - phi.eval([shooting["X",i],parameters["U",i],shooting["W",i]])[0] )
-G = SXFunction([shooting,parameters],[vertcat(g)])
-G.init()
+
+# Formulate the NLP
+nlp = SXFunction(nlpIn(x=shooting,p=parameters),nlpOut(f=obj,g=vertcat(g)))
+
 # Make a simulation to create the data for the problem
 simulated_X = DMatrix.zeros(Nstates,Nsimulation)
 simulated_X[:,0] = DMatrix([1,0]) # Initial state
@@ -129,17 +129,17 @@ simulated_U = DMatrix(cos(t[0:-1])).T # control input for the simulation
 simulated_U[:,Nsimulation/2:] = 0.0
 simulated_W = DMatrix(sigma_w*NP.random.randn(Ndisturbances,Nsimulation-1)) # Process noise for the simulation
 for i in range(Nsimulation-1):
-  phi.input(0).set(simulated_X[:,i])
-  phi.input(1).set(simulated_U[:,i])
-  phi.input(2).set(simulated_W[:,i])
+  phi.setInput(simulated_X[:,i],0)
+  phi.setInput(simulated_U[:,i],1)
+  phi.setInput(simulated_W[:,i],2)
   phi.evaluate()
-  simulated_X[:,i+1] = phi.output(0)
+  simulated_X[:,i+1] = phi.getOutput(0)
 #Create the measurements from these states
 simulated_Y = DMatrix(Nmeas,Nsimulation) # Holder for the measurements
 for i in range(Nsimulation):
-  h.input(0).set(simulated_X[:,i])
+  h.setInput(simulated_X[:,i],0)
   h.evaluate()
-  simulated_Y[:,i] = h.output(0)
+  simulated_Y[:,i] = h.getOutput(0)
 # Add noise the the position measurements
 simulated_Y += sigma_p*NP.random.randn(simulated_Y.shape[0],simulated_Y.shape[1])
 
@@ -148,15 +148,15 @@ sigma_x0 = 0.01
 P = sigma_x0**2*DMatrix.eye(Nstates)
 x0 = simulated_X[:,0] + sigma_x0*NP.random.randn(Nstates,1)
 # Create the solver
-nlp_solver = IpoptSolver(f_obj,G)
+nlp_solver = IpoptSolver(nlp)
 nlp_solver.setOption({"print_level":0, "print_time": False})
 nlp_solver.setOption('linear_solver','MA57')
 nlp_solver.setOption('max_iter',100)
 nlp_solver.init()
 
 # Set the bounds for the constraints: we only have the multiple shooting constraints, so all constraints have upper and lower bound of zero
-nlp_solver.input("lbg").setAll(0)
-nlp_solver.input("ubg").setAll(0)
+nlp_solver.setInput(0,"lbg")
+nlp_solver.setInput(0,"ubg")
 
 # Create a holder for the estimated states and disturbances
 estimated_X= DMatrix(Nstates,Nsimulation)
@@ -175,7 +175,7 @@ nlp_solver.setInput(initialisation_state,"x0")
 
 nlp_solver.solve()
 # Get the solution
-solution = shooting(nlp_solver.output("x"))
+solution = shooting(nlp_solver.getOutput("x"))
 estimated_X[:,0:N] = solution["X",horzcat]
 estimated_W[:,0:N-1] = solution["W",horzcat]
 
@@ -183,24 +183,24 @@ estimated_W[:,0:N-1] = solution["W",horzcat]
 for i in range(1,Nsimulation-N+1):
   # Update the arrival cost, using linearisations around the estimate of MHE at the beginning of the horizon (according to the 'Smoothed EKF Update'): first update the state and covariance with the measurement that will be deleted, and next propagate the state and covariance because of the shifting of the horizon
   print "step %d/%d (%s)" % (i, Nsimulation-N , nlp_solver.getStat("return_status"))
-  H.input(0).set(solution["X",0])
+  H.setInput(solution["X",0],0)
   H.evaluate()
-  H0 = H.output(0)
+  H0 = H.getOutput(0)
   K = mul([P,H0.T,linalg.inv(mul([H0,P,H0.T])+R)])
   P = mul((DMatrix.eye(Nstates)-mul(K,H0)),P)
-  h.input(0).set(solution["X",0])
+  h.setInput(solution["X",0],0)
   h.evaluate()
-  x0 = x0 + mul(K, current_parameters["Y",0]-h.output(0)-mul(H0,x0-solution["X",0]) )
-  phi.input(0).set(x0)
-  phi.input(1).set(current_parameters["U",0])
-  phi.input(2).set(solution["W",0])
+  x0 = x0 + mul(K, current_parameters["Y",0]-h.getOutput(0)-mul(H0,x0-solution["X",0]) )
+  phi.setInput(x0,0)
+  phi.setInput(current_parameters["U",0],1)
+  phi.setInput(solution["W",0],2)
   phi.evaluate()
-  x0 = phi.output(0)
-  PHI.input(0).set(solution["X",0])
-  PHI.input(1).set(current_parameters["U",0])
-  PHI.input(2).set(solution["W",0])
+  x0 = phi.getOutput(0)
+  PHI.setInput(solution["X",0],0)
+  PHI.setInput(current_parameters["U",0],1)
+  PHI.setInput(solution["W",0],2)
   PHI.evaluate()
-  F = PHI.output(0)
+  F = PHI.getOutput(0)
   PHI.evaluate()
   P = mul([F,P,F.T]) + linalg.inv(Q)
   # Get the measurements and control inputs 
@@ -213,11 +213,11 @@ for i in range(1,Nsimulation-N+1):
   initialisation_state["W",N-2] = DMatrix.zeros(Ndisturbances,1) # The last node for the disturbances is initialized with zeros
   initialisation_state["X",horzcat,0:N-1] = estimated_X[:,i:i+N-1] # The shifted solution for the state estimates
   # The last node for the state is initialized with a forward simulation
-  phi.input(0).set(initialisation_state["X",N-1] )
-  phi.input(1).set(current_parameters["U",-1])
-  phi.input(2).set(initialisation_state["W",-1])
+  phi.setInput(initialisation_state["X",N-1] ,0)
+  phi.setInput(current_parameters["U",-1],1)
+  phi.setInput(initialisation_state["W",-1],2)
   phi.evaluate()
-  initialisation_state["X",N-1] = phi.output(0)
+  initialisation_state["X",N-1] = phi.getOutput(0)
   # And now initialize the solver and solve the problem
   nlp_solver.setInput(current_parameters,"p")
   nlp_solver.setInput(initialisation_state,"x0")

@@ -20,8 +20,8 @@
  *
  */
 
-#ifndef EVALUATION_MX_HPP
-#define EVALUATION_MX_HPP
+#ifndef CALL_FX_HPP
+#define CALL_FX_HPP
 
 #include "multiple_output.hpp"
 #include "../fx/fx.hpp"
@@ -32,24 +32,17 @@ namespace CasADi{
       \author Joel Andersson 
       \date 2010-2013
   */
-  class EvaluationMX : public MultipleOutput{
+  class CallFX : public MultipleOutput{
   public:
 
     /** \brief  Constructor */
-    explicit EvaluationMX(const FX& fcn, std::vector<MX> arg);
-
-    /** \brief  Creator function, arranges the outputs */
-    static void create(const FX& fcn, 
-                       const std::vector<MX> &arg, std::vector<MX> &res, 
-                       const std::vector<std::vector<MX> > &fseed, std::vector<std::vector<MX> > &fsens, 
-                       const std::vector<std::vector<MX> > &aseed, std::vector<std::vector<MX> > &asens,
-                       bool output_given=false);
+    explicit CallFX(const FX& fcn, std::vector<MX> arg);
     
     /** \brief  Destructor */
-    virtual ~EvaluationMX(){}
+    virtual ~CallFX(){}
   
     /** \brief  Clone function */
-    virtual EvaluationMX* clone() const;
+    virtual CallFX* clone() const;
 
     /** \brief  Print a part of the expression */
     virtual void printPart(std::ostream &stream, int part) const;
@@ -58,16 +51,16 @@ namespace CasADi{
     virtual void generateOperation(std::ostream &stream, const std::vector<std::string>& arg, const std::vector<std::string>& res, CodeGenerator& gen) const;
 
     /** \brief  Evaluate the function numerically */
-    virtual void evaluateD(const DMatrixPtrV& input, DMatrixPtrV& output, const DMatrixPtrVV& fwdSeed, DMatrixPtrVV& fwdSens, const DMatrixPtrVV& adjSeed, DMatrixPtrVV& adjSens);
+    virtual void evaluateD(const DMatrixPtrV& input, DMatrixPtrV& output, const DMatrixPtrVV& fwdSeed, DMatrixPtrVV& fwdSens, const DMatrixPtrVV& adjSeed, DMatrixPtrVV& adjSens, std::vector<int>& itmp, std::vector<double>& rtmp);
 
     /** \brief  Evaluate the function symbolically (SX) */
-    virtual void evaluateSX(const SXMatrixPtrV& input, SXMatrixPtrV& output, const SXMatrixPtrVV& fwdSeed, SXMatrixPtrVV& fwdSens, const SXMatrixPtrVV& adjSeed, SXMatrixPtrVV& adjSens);
+    virtual void evaluateSX(const SXMatrixPtrV& input, SXMatrixPtrV& output, const SXMatrixPtrVV& fwdSeed, SXMatrixPtrVV& fwdSens, const SXMatrixPtrVV& adjSeed, SXMatrixPtrVV& adjSens, std::vector<int>& itmp, std::vector<SX>& rtmp);
 
     /** \brief  Evaluate the function symbolically (MX) */
     virtual void evaluateMX(const MXPtrV& input, MXPtrV& output, const MXPtrVV& fwdSeed, MXPtrVV& fwdSens, const MXPtrVV& adjSeed, MXPtrVV& adjSens, bool output_given);
 
     /** \brief  Propagate sparsity */
-    virtual void propagateSparsity(DMatrixPtrV& input, DMatrixPtrV& output, bool fwd);
+    virtual void propagateSparsity(DMatrixPtrV& input, DMatrixPtrV& output, std::vector<int>& itmp, std::vector<double>& rtmp, bool fwd);
 
     /** \brief  Get function reference */
     virtual FX& getFunction();
@@ -99,4 +92,4 @@ namespace CasADi{
 
 } // namespace CasADi
 
-#endif // EVALUATION_MX_HPP
+#endif // CALL_FX_HPP

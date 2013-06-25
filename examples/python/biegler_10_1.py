@@ -83,7 +83,7 @@ for N in range(1,11):
   for j in range(K+1):
     l[j].setInput(1.)
     l[j].evaluate()
-    D[j] = l[j].output()
+    D[j] = l[j].getOutput()
   print "D = ", D
 
   # Get the coefficients of the collocation equation using AD
@@ -93,7 +93,7 @@ for N in range(1,11):
       l[j].setInput(tau_root[k])
       l[j].setFwdSeed(1.0)
       l[j].evaluate(1,0)
-      C[j,k] = l[j].fwdSens()
+      C[j,k] = l[j].getFwdSens()
   print "C = ", C
   
   # Collocated states
@@ -120,19 +120,16 @@ for N in range(1,11):
       g.append(Z[i+1,0] - rhs)
 
   print "g = ", g
-  
-  # Constraint function
-  gfcn = SXFunction([x],[g])
 
-  # Dummy objective function
-  obj = SXFunction([x], [x[0]*x[0]])
-  
+  # NLP
+  nlp = SXFunction(nlpIn(x=x),nlpOut(f=x[0]**2,g=g))
+
   ## ----
   ## SOLVE THE NLP
   ## ----
   
   # Allocate an NLP solver
-  solver = IpoptSolver(obj,gfcn)
+  solver = IpoptSolver(nlp)
 
   # Set options
   solver.setOption("tol",1e-10)
@@ -168,7 +165,7 @@ for N in range(1,11):
   print "time points: ", t_opt
 
   # Print the optimal cost
-  print "optimal cost: ", float(solver.output("f"))
+  print "optimal cost: ", float(solver.getOutput("f"))
 
   # Print the optimal solution
   xopt = solver.output("x").data()

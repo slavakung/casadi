@@ -24,7 +24,7 @@
 #include "mx_node.hpp"
 #include "mx_tools.hpp"
 #include "../fx/sx_function.hpp"
-#include "evaluation_mx.hpp"
+#include "call_fx.hpp"
 #include "symbolic_mx.hpp"
 #include "constant_mx.hpp"
 #include "mx_tools.hpp"
@@ -86,6 +86,21 @@ namespace CasADi{
   MX MX::create(MXNode* node){
     MX ret;
     ret.assignNode(node);
+    return ret;
+  }
+
+  std::vector<MX> MX::createMultipleOutput(MXNode* node){
+    casadi_assert(dynamic_cast<MultipleOutput*>(node)!=0);
+    MX x =  MX::create(node);
+    std::vector<MX> ret(x->getNumOutputs());
+    for(int i=0; i<ret.size(); ++i){
+      ret[i] = MX::create(new OutputNode(x, i));
+      if(ret[i].numel()==0){
+        ret[i] = MX();
+      } else if(ret[i].size()==0){
+        ret[i] = MX::sparse(ret[i].shape());
+      }
+    }
     return ret;
   }
 
@@ -177,6 +192,9 @@ namespace CasADi{
   const MX MX::sub(const CRSSparsity& sp, int dummy) const {
     casadi_assert_message(size1()==sp.size1() && size2()==sp.size2(),"sub(CRSSparsity sp): shape mismatch. This matrix has shape " << size1() << " x " << size2() << ", but supplied sparsity index has shape " << sp.size1() << " x " << sp.size2() << "." );
     vector<unsigned char> mappingc; // Mapping that will be filled by patternunion
+    
+    // Quick return if sparsity matches MX's sparsity
+    if (sparsity()==sp) { return (*this); }
   
     sparsity().patternCombine(sp, false, true, mappingc);
     vector<int> nz(sp.size(),-1);
@@ -344,7 +362,37 @@ namespace CasADi{
 
   void MX::setSub(const MX& m, const CRSSparsity& sp, int dummy) {
     casadi_assert_message(size1()==sp.size1() && size2()==sp.size2(),"setSub(.,CRSSparsity sp): shape mismatch. This matrix has shape " << size1() << " x " << size2() << ", but supplied sparsity index has shape " << sp.size1() << " x " << sp.size2() << "." );
-    casadi_error("Not implemented yet");
+    
+    // If m is scalar
+    if(m.scalar()){
+      setSub(MX(sp,m),sp,dummy);
+      return;
+    }
+    
+    MX mm = m.sub(sp);
+    
+    vector<unsigned char> mappingc; // Mapping that will be filled by patternunion
+  
+    sparsity().patternCombine(sp, false, true, mappingc);
+    vector<int> nz(sp.size(),-1);
+
+    int k_this = 0;     // Non-zero of this matrix
+    int k_sp = 0;       // Non-zero of resulting matrix
+    for (vector<unsigned char>::const_iterator i=mappingc.begin(); i!=mappingc.end(); ++i){
+      // In this matrix
+      if(*i & 1){
+        if(*i & 4){
+          k_this++;
+        } else {
+          nz[k_sp++] = k_this++; // In both this matrix and in resulting matrix 
+        }
+      } else if(*i &2){
+        k_sp++;
+      }
+    }
+
+    *this =  mm->getSetNonzeros((*this),nz);
+    
   }
 
   MX MX::getNZ(int k) const{
@@ -865,11 +913,15 @@ namespace CasADi{
     return (*this)->getOutput(oind);
   }
 
-  MX MX::setSparse(const CRSSparsity& sp) const{
-    if(sp==sparsity()){
+  MX MX::setSparse(const CRSSparsity& sp, bool intersect) const{
+    if(isNull() || empty() || (sp==sparsity())){
       return *this;
     } else {
-      return (*this)->getSetSparse(sp);
+      if(intersect){
+        return (*this)->getSetSparse(sp.patternIntersection(sparsity()));
+      } else {
+        return (*this)->getSetSparse(sp);
+      }
     }
   }
 

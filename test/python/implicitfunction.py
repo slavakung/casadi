@@ -51,8 +51,8 @@ class NLPtests(casadiTestCase):
       solver=Solver(f)
       solver.setOption(options)
       solver.init()
-      solver.output().set(6)
-      solver.solve()
+      solver.setOutput(6)
+      solver.evaluate()
       
       refsol = SXFunction([],[2*pi])
       refsol.init()
@@ -71,14 +71,14 @@ class NLPtests(casadiTestCase):
       solver=Solver(f)
       solver.setOption(options)
       solver.init()
-      solver.fwdSeed().set(1)
-      solver.adjSeed().set(1)
-      solver.input().set(n)
+      solver.setFwdSeed(1)
+      solver.setAdjSeed(1)
+      solver.setInput(n)
       solver.evaluate(1,1)
       
       refsol = SXFunction([x],[sin(x)])
       refsol.init()
-      refsol.input().set(n)
+      refsol.setInput(n)
       self.checkfx(solver,refsol,digits=6,gradient=False,hessian=False,sens_der=False,failmessage=message)
       
       
@@ -95,15 +95,15 @@ class NLPtests(casadiTestCase):
       solver=Solver(f)
       solver.setOption(options)
       solver.init()
-      solver.fwdSeed().set(1)
-      solver.adjSeed().set(1)
-      solver.input().set(n)
-      solver.output().set([0.1,0.4])
+      solver.setFwdSeed(1)
+      solver.setAdjSeed(1)
+      solver.setInput(n)
+      solver.setOutput([0.1,0.4])
       solver.evaluate(1,1)
       
       refsol = SXFunction([x],[vertcat([sin(x),sqrt(sin(x))])]) # ,sin(x)**2])
       refsol.init()
-      refsol.input().set(n)
+      refsol.setInput(n)
       self.checkfx(solver,refsol,digits=6,gradient=False,hessian=False,sens_der=False,failmessage=message)
       
   def testKINSol1c(self):
@@ -115,9 +115,9 @@ class NLPtests(casadiTestCase):
     solver.setOption("constraints",[-1])
     print solver.dictionary()
     solver.init()
-    solver.output().set(-6)
-    solver.solve()
-    self.assertAlmostEqual(solver.output()[0],-2*pi,5)
+    solver.setOutput(-6)
+    solver.evaluate()
+    self.assertAlmostEqual(solver.getOutput()[0],-2*pi,5)
     
 if __name__ == '__main__':
     unittest.main()

@@ -1,6 +1,7 @@
 from casadi import *
 
 import operator
+import sys
 
 # StructIndex :tuple/list of strings
 # canonicalIndex : tuple/list of string or numbers
@@ -224,7 +225,9 @@ class StructEntry:
         else:
           raise Exception("I don't know what to do with this: %s" % str(p))
     except Exception as e:
-      raise Exception("Error occured in entry context with powerIndex %s, at canonicalIndex %s:\n%s" % (str(powerIndex),str(canonicalIndex),str(e)))
+      exc_class, exc, tb = sys.exc_info()
+      new_exc = Exception("Error occured in entry context with powerIndex %s, at canonicalIndex %s:\n%s" % (str(powerIndex),str(canonicalIndex),str(e)))
+      raise new_exc.__class__, new_exc, tb
   
 class Structure:
   def __init__(self,entries,order=None):
@@ -357,7 +360,9 @@ class Structure:
         else:
           raise Exception("I don't know what to do with this: %s" % str(p))
       except Exception as e:
-        raise Exception("Error occured in struct context with powerIndex %s, at canonicalIndex %s:\n%s" % (str(powerIndex),str(canonicalIndex),str(e)))
+        exc_class, exc, tb = sys.exc_info()
+        new_exc = Exception("Error occured in struct context with powerIndex %s, at canonicalIndex %s:\n%s" % (str(powerIndex),str(canonicalIndex),str(e)))
+        raise new_exc.__class__, new_exc, tb
       
 # Casadi-dependant Structure framework
     
@@ -399,7 +404,9 @@ class CasadiStructureDerivable:
        raise Exception("Expecting n x %d DMatrix. Got %s" % (self.size,a.dimString()))
     s = struct([entry("t",struct=self,repeat=a.shape[0])])
     numbers = DMatrixStruct(s,data=a,dataVectorCheck=False)
-    return numbers.prefix["t"]
+    p = numbers.prefix["t"]
+    p.castmaster = True
+    return p  
     
   def squared(self,arg=0):
     if isinstance(arg,DMatrix):
@@ -415,7 +422,9 @@ class CasadiStructureDerivable:
        raise Exception("Expecting square DMatrix of size %s. Got %s" % (self.size,a.dimString()))
     s = struct([entry("t",shapestruct=(self,self))])
     numbers = DMatrixStruct(s,data=a,dataVectorCheck=False)
-    return numbers.prefix["t"]
+    p = numbers.prefix["t"]
+    p.castmaster = True
+    return p  
 
   def squared_repeated(self,arg=0):
     if isinstance(arg,DMatrix):
@@ -429,29 +438,56 @@ class CasadiStructureDerivable:
        raise Exception("Expecting N x square DMatrix. Got %s" % (self.size,a.dimString()))
     s = struct([entry("t",shapestruct=(self,self),repeat=a.shape[0] / self.size)])
     numbers = DMatrixStruct(s,data=a,dataVectorCheck=False)
-    return numbers.prefix["t"]
+    p = numbers.prefix["t"]
+    p.castmaster = True
+    return p  
     
 class GetterDispatcher(Dispatcher):
   def __call__(self,payload,canonicalIndex,extraIndex=None,entry=None):
+    type = None if entry is None else entry.type
     if canonicalIndex in self.struct.map:
       i = performExtraIndex(self.struct.map[canonicalIndex],extraIndex=extraIndex,entry=entry)
       try:
-        return self.master[i]
+        if type is None:
+          return self.master[i]
+        elif type=="symm":
+          return tril2symm(self.master[i])
+        else:
+          raise Exception("Cannot handle type '%s'." % entry.type)
       except Exception as e:
-        raise Exception("Error in powerIndex slicing for canonicalIndex %s: %s" % (str(canonicalIndex),str(e)))
+        exc_class, exc, tb = sys.exc_info()
+        new_exc = Exception("Error in powerIndex slicing for canonicalIndex %s:\n%s" % (str(canonicalIndex),str(e)))
+        raise new_exc.__class__, new_exc, tb
     else:
       raise Exception("Canonical index %s does not exist." % str(canonicalIndex))
 
 class SetterDispatcher(Dispatcher):
   def __call__(self,payload,canonicalIndex,extraIndex=None,entry=None):
+    type = None if entry is None else entry.type
     if canonicalIndex in self.struct.map:
       i = performExtraIndex(self.struct.map[canonicalIndex],extraIndex=extraIndex,entry=entry)
       try:
-        self.master[i] = payload
+        if type is None:
+          self.master[i] = payload
+        elif type=="symm":
+          iflip = performExtraIndex(self.struct.map[canonicalIndex],extraIndex=extraIndex,entry=entry,flip=True)
+          if not(hasattr(payload,"scalar")) or payload.scalar():
+            self.master[i] = payload
+            self.master[iflip] = payload
+          else:
+            oi = performExtraIndex(DMatrix(entry.originalsparsity,1),extraIndex=extraIndex,entry=entry)
+            if oi.sparsity()!=payload.sparsity():
+              raise Exception("Payload sparsity " + payload.dimString() +  " does not match lhs sparisty " + oi.dimString() + "." )
+            self.master[iflip] = payload.T[iflip.sparsity()]
+            self.master[i] = payload[i.sparsity()]
+        else:
+          raise Exception("Cannot handle type '%s'." % entry.type)
       except NotImplementedError:
         raise CompatibilityException("Error in canonicalIndex slicing for %s: Incompatible types in a[i]=b with a %s and b %s." % (str(canonicalIndex),str(self.master),str(payload)))
       except Exception as e:
-        raise Exception("Error in powerIndex slicing for canonicalIndex %s: %s" % (str(canonicalIndex),str(e)))
+        exc_class, exc, tb = sys.exc_info()
+        new_exc = Exception("Error in powerIndex slicing for canonicalIndex %s:\n%s" % (str(canonicalIndex),str(e)))
+        raise new_exc.__class__, new_exc, tb
     else:
       raise Exception("Canonical index %s does not exist." % str(canonicalIndex))
       
@@ -464,7 +500,9 @@ class SetterDispatcher(Dispatcher):
     except NotImplementedError:
       raise CompatibilityException("Error in canonicalIndex slicing for %s: Incompatible types in a[i]=b with a %s and b %s." % (str(canonicalIndex),str(self.master),str(payload)))
     except Exception as e:
-      raise Exception("Error in powerIndex slicing for canonicalIndex %s: %s" % (str(canonicalIndex),str(e)))
+      exc_class, exc, tb = sys.exc_info()
+      new_exc = Exception("Error in powerIndex slicing for canonicalIndex %s:\n %s" % (str(canonicalIndex),str(e)))
+      raise new_exc.__class__, new_exc, tb
       
 class MasterGettable:
   @properGetitem
@@ -487,7 +525,7 @@ def delegation(extraIndex,entry,i):
   else:
     return extraIndex
     
-def performExtraIndex(i,extraIndex=None,entry=None):
+def performExtraIndex(i,extraIndex=None,entry=None,flip=False):
   if extraIndex is not None and not(isinstance(extraIndex[0],NestedDictLiteral)):
     if len(extraIndex)>2 or len(extraIndex)==0:
       raise Exception("Powerindex exhausted. Remaining %s is interpreted as extraIndex, but length must be 1 or 2." % str(extraIndex))
@@ -500,7 +538,7 @@ def performExtraIndex(i,extraIndex=None,entry=None):
         a,b = extraIndex
         a = delegation(a,entry,0)
         b = delegation(b,entry,1)
-        return i.__getitem__((a,b))
+        return i.__getitem__((b,a) if flip else (a,b))
     except NotImplementedError:
        raise Exception("Powerindex exhausted. Passing on %s to %s, but it doesn't know what to do with it" % (str(extraIndex),str(type(i))))
   else:
@@ -508,22 +546,28 @@ def performExtraIndex(i,extraIndex=None,entry=None):
 
 
 class Prefixer:
-  def __init__(self,struct,prefix):
+  def __init__(self,struct,prefix,castmaster=False):
     self.struct = struct
     self.prefix = prefix
+    self.castmaster = castmaster
     
     methods = [ "__DMatrix__", "__SXMatrix__","__MX__"]
     for m in methods:
       if hasattr(self.struct,m):
-        setattr(self,m,self.__call__)
-          
- 
+        setattr(self,m,self.cast)
+
   def __getattr__(self,name):
     # When attributes are not found, delegate to self()
     # This allows for e.g. sin(x) and x+1 to work
-    t = self()
+    t = self.struct.master
     if not(isinstance(t,list) or isinstance(t,dict) or isinstance(t,tuple)):
       return getattr(t,name)
+      
+  def cast(self):
+    if self.castmaster:
+      return self.struct.master
+    else:
+      return self()
         
   def __str__(self):
     return "prefix( " + str(self.prefix) + "," + self.struct.__str__(compact=True) + ")"
@@ -548,12 +592,13 @@ class PrefixConstructor:
     
   __repr__ = __str__
   
-  def __init__(self,struct):
+  def __init__(self,struct,castmaster=False):
     self.struct = struct
+    self.castmaster=castmaster
   
   @properGetitem
   def __getitem__(self,prefix):
-    return Prefixer(self.struct,prefix)
+    return Prefixer(self.struct,prefix,castmaster=self.castmaster)
     
 class CasadiStructure(Structure,CasadiStructureDerivable):
   """
@@ -767,7 +812,7 @@ class MatrixStruct(CasadiStructured,MasterGettable,MasterSettable):
     if dataVectorCheck:
       if self.master.shape[0]!=self.size:
         raise Exception("MatrixStruct: dimension error. Expecting %d-by-1, but got %s" % (self.size,self.master.dimString()))
-      if self.master.shape[1]!=1:
+      if self.master.shape[1]!=1 and self.master.shape[0]>0:
         raise Exception("MatrixStruct: dimension error. Expecting %d-by-1, but got %s" % (self.size,self.master.dimString()))
     else:
       if self.master.size()!=self.size:
@@ -874,7 +919,7 @@ class CasadiStructEntry(StructEntry):
     
 
     kw = kwargs.keys()
-    kws = ['repeat','shape','sym','expr','struct','shapestruct']
+    kws = ['repeat','shape','sym','expr','struct','shapestruct','type']
     for k in kw:
       if k not in kws:
         raise Exception("Unknown keyword argument '%s'. Please use one of %s." % (k,str(kws)))
@@ -982,12 +1027,30 @@ class CasadiStructEntry(StructEntry):
       if hasattr(p,"sparsity"):
         self.sparsity = p.sparsity()
       else:
-        raise Exception("The 'expr' argument must be a matrix expression or nested list of matrix expressions. Got %s instead." % str(p)) 
+        raise Exception("The 'expr' argument must be a matrix expression or nested list of matrix expressions. Got %s instead." % str(p))
+        
+    self.type = None
+    #     class   argument
+    if 'type' in kwargs:
+      self.type= kwargs["type"]
+      allowedclass = ['symm']
+      if self.type not in allowedclass:
+        raise Exception("You supplied a type argument '%s' but it is not recognised. Use one of %s" % (str(self.type,str(allowedclass))))
+      if self.type=="symm":
+        if self.sparsity.size1() != self.sparsity.size2():
+          raise Exception("You supplied a type 'symm', but matrix is not square. Got " % self.sparsity.dimString() + ".")
+        self.originalsparsity = self.sparsity
+        self.sparsity = self.sparsity*sp_tril(self.sparsity.size1())
+        
+         
       
     StructEntry.__init__(self,self.name,struct=self.struct,dims=self.repeat,data=self.sparsity)
  
   def primitiveString(self):
-    return self.sparsity.dimString()
+    if self.type is None:
+      return self.sparsity.dimString()
+    elif self.type=="symm":
+      return "symm(" +  self.sparsity.dimString() + ")"
  
 def entry(*args,**kwargs):
   if len(args)==1 and isinstance(args[0],CasadiStructEntry):

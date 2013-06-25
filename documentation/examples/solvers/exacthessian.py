@@ -51,24 +51,24 @@ h=SXFunction(hessLagIn(x=xy,lam_g=lambd,lam_f=sigma),
 solver = IpoptSolver(nlp)
 solver.setOption("hess_lag",h)
 solver.init()
-solver.input("lbx").set([-10]*2)
-solver.input("ubx").set([10]*2)
-solver.input("lbg").set([0])
-solver.input("ubg").set([1])
+solver.setInput([-10]*2,"lbx")
+solver.setInput([10]*2,"ubx")
+solver.setInput([0],"lbg")
+solver.setInput([1],"ubg")
 solver.solve()
 
-for sol in array(solver.output()):
+for sol in array(solver.getOutput()):
   print "%.15f" % sol
 
 #! To compare the behaviour of convergence, we solve the same problem without exact hessian
 solver = IpoptSolver(nlp)
 solver.init()
-solver.input("lbx").set([-10]*2)
-solver.input("ubx").set([10]*2)
-solver.input("lbg").set([0])
-solver.input("ubg").set([1])
+solver.setInput([-10]*2,"lbx")
+solver.setInput([10]*2,"ubx")
+solver.setInput([0],"lbg")
+solver.setInput([1],"ubg")
 solver.solve()
 
-for sol in array(solver.output()):
+for sol in array(solver.getOutput()):
   print "%.15f" % sol
 

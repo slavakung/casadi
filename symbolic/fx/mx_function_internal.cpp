@@ -21,7 +21,7 @@
 */
 
 #include "mx_function_internal.hpp"
-#include "../mx/evaluation_mx.hpp"
+#include "../mx/call_fx.hpp"
 #include "../mx/mx_tools.hpp"
 #include "../sx/sx_tools.hpp"
 
@@ -39,8 +39,6 @@ namespace CasADi{
     XFunctionInternal<MXFunction,MXFunctionInternal,MX,MXNode>(inputv,outputv) {
   
     setOption("name", "unnamed_mx_function");
-    setOption("numeric_jacobian", true);
-    setOption("numeric_hessian", true);
   
     // Check for inputs that are not are symbolic primitives
     int ind=0;
@@ -370,7 +368,6 @@ namespace CasADi{
     for(vector<AlgEl>::iterator it=algorithm_.begin(); it!=algorithm_.end(); ++it){
       switch(it->op){
       case OP_CALL:
-      case OP_NONLINEAR_SOLVE:
         it->data->getFunction().requestNumSens(nfdir_,nadir_);
         break;
       default:
@@ -595,7 +592,6 @@ namespace CasADi{
       switch(it->op){
       case OP_CALL:
       case OP_SOLVE:
-      case OP_NONLINEAR_SOLVE:
         it->data.makeUnique(already_copied,false);
         it->data->getFunction() = deepcopy(it->data->getFunction(),already_copied);
         break;
@@ -820,9 +816,10 @@ namespace CasADi{
     
       if(it->op == OP_INPUT){
         // Fetch input
-        swork[it->res.front()] = arg[it->arg.front()];
+        const CRSSparsity& sp_input = input(it->arg.front()).sparsity();
+        swork[it->res.front()] = arg[it->arg.front()].setSparse(sp_input,true);
         for(int d=0; d<nfdir; ++d){
-          dwork[it->res.front()][d] = fseed[d][it->arg.front()];
+          dwork[it->res.front()][d] = fseed[d][it->arg.front()].setSparse(sp_input,true);
         }
       } else if(it->op==OP_OUTPUT){
         // Collect the results
@@ -933,7 +930,7 @@ namespace CasADi{
         } else if(it->op==OP_OUTPUT){
           // Pass the adjoint seeds
           for(int d=0; d<nadir; ++d){
-            dwork[it->arg.front()][d] += aseed[d][it->res.front()];          
+            dwork[it->arg.front()][d] += aseed[d][it->res.front()].setSparse(output(it->res.front()).sparsity(),true);
           }
         } else if(it->op==OP_PARAMETER){
           // Clear adjoint seeds
@@ -1087,6 +1084,8 @@ namespace CasADi{
   
     // Create function
     SXFunction f(arg,res);
+    f.setInputScheme(getInputScheme());
+    f.setOutputScheme(getOutputScheme());
     return f;
   }
 
@@ -1159,7 +1158,6 @@ namespace CasADi{
       switch(it->op){
       case OP_CALL:
       case OP_SOLVE:
-      case OP_NONLINEAR_SOLVE:
         gen.addDependency(it->data->getFunction());
         break;
       default:

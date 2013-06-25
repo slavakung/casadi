@@ -68,6 +68,9 @@ class GenericMatrix{
     /** \brief Get get the number of non-zeros in the upper triangular half */
     int sizeU() const;
 
+    /** \brief Get get the number of non-zeros on the diagonal */
+    int sizeD() const;
+    
     /** \brief Get the number of elements */
     int numel() const;
 
@@ -128,7 +131,10 @@ class GenericMatrix{
     /** \brief  Access vector element or slice */
     template<typename I>
     SubMatrix<MatType,I,int> operator()(const I& i){ return SubMatrix<MatType,I,int>(static_cast<MatType&>(*this),i,0); }
-       
+
+    /** \brief  Access Sparsity slice */
+    SubMatrix<MatType,CRSSparsity,int> operator()(const CRSSparsity& sp){ return SubMatrix<MatType,CRSSparsity,int>(static_cast<MatType&>(*this),sp,0); }
+      
     /** \brief  Access Matrix element or slice */
     template<typename I, typename J>
     SubMatrix<MatType,I,J> operator()(const I& i, const J& j){ return SubMatrix<MatType,I,J>(static_cast<MatType&>(*this),i,j); }
@@ -179,6 +185,11 @@ int GenericMatrix<MatType>::sizeU() const{
 template<typename MatType>
 int GenericMatrix<MatType>::sizeL() const{
   return sparsity().sizeL();
+}
+
+template<typename MatType>
+int GenericMatrix<MatType>::sizeD() const{
+  return sparsity().sizeD();
 }
 
 template<typename MatType>

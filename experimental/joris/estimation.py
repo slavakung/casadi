@@ -104,7 +104,7 @@ sim.init()
 states.X_ = states.V_ = [0,0,0]  # Initial state to generate the dummy measurements
 states.q_ = [0,0,0,1]            
 
-sim.input("x0").set(states.veccat_())
+sim.setInput(states.veccat_(),"x0")
 sim.input("v")[:,imu.i_a.T] = DMatrix([sin(tsm),cos(3*tsm),sin(2*tsm)]).T
 sim.input("v")[:,imu.i_w.T] = DMatrix([cos(3*tsm),sin(7*tsm),sin(11*tsm)]).T
 
@@ -112,14 +112,14 @@ sim.evaluate()
 
 tsf = sim.getGrid()  # The fine time grid of the controlsimulator
 
-reference_imu = sim.input("v")
-reference_Xf   = sim.output()[:,states.i_X.T]
+reference_imu = sim.getInput("v")
+reference_Xf   = sim.getOutput()[:,states.i_X.T]
 
 reference_X   = reference_Xf[sim.getCoarseIndex(),:]
 
 Rf = SXFunction([states.q],[vec(R)])
 Rf.init()
-reference_Rf = numSample1D(Rf,sim.output()[:,states.i_q.T].T).T
+reference_Rf = numSample1D(Rf,sim.getOutput()[:,states.i_q.T].T).T
 reference_R   = reference_Rf[sim.getCoarseIndex(),:]
 # End of generating dummy excitations
 
@@ -148,9 +148,9 @@ xp = SXFunction([tau],[ mul(x.T,Le), mul(x.T,dL.eval([tau])[0]) ])
 xp.init()
 taus = DMatrix(numpy.linspace(0,1,500)).T
     
-L.input().set(1)
+L.setInput(1)
 L.evaluate()
-Lend = DMatrix(L.output())  # Le at the end of the control interval
+Lend = L.getOutput()  # Le at the end of the control interval
 
 dLm = numSample1D(dL,DMatrix(tau_root).T)  # d-by-d
 
@@ -219,11 +219,11 @@ class NLPSolutionInspector:
     if self.i>0:
       self.log[0,self.i] = log10(f.getStats()['inf_pr'])
       self.log[1,self.i] = log10(f.getStats()['inf_du'])
-      self.log[2,self.i] = float(log10(f.input("f")))
+      self.log[2,self.i] = float(log10(f.getInput("f")))
       self.log[3,self.i] = f.getStats()['ls_trials']
       
     self.i += 1
-    sol = f.input("x")
+    sol = f.getInput("x")
     X_opt = horzcat([sol[i][states.i_X,:] for i in optvar.i_X])
     q_opt = horzcat([sol[i][states.i_q,:] for i in optvar.i_X])
     R_opt = numSample1D(Rf,q_opt)
@@ -273,12 +273,12 @@ nlp.init()
 nlp.solve()
 for i in range(nk):  # intialize with (0,0,0,1) quaternion
   nlp.input("x0")[optvar.i_X[i][states.i_q[3],:]] = 1
-nlp.input("p").set(par.veccat_())
-nlp.input("lbg").setAll(0)
-nlp.input("ubg").setAll(0)
+nlp.setInput(par.veccat_(),"p")
+nlp.setInput(0,"lbg")
+nlp.setInput(0,"ubg")
 nlp.solve()
 
-sol = nlp.output()
+sol = nlp.getOutput()
 
 X_opt = horzcat([sol[i][states.i_X,:] for i in optvar.i_X])
 

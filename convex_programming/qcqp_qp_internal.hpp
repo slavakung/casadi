@@ -20,37 +20,42 @@
  *
  */
 
-#include "symbolic/casadi.hpp"
-#include <ctime>
+#ifndef QCQP_QP_INTERNAL_HPP
+#define QCQP_QP_INTERNAL_HPP
 
-using namespace std;
-using namespace CasADi;
+#include "symbolic/fx/qp_solver_internal.hpp"
+#include "symbolic/fx/qcqp_solver.hpp"
 
-int main() {
-  int N = 2000;
-  int n = 100;
-  SXMatrix x = ssym("x",N);
-  SXFunction f(x,pow(x,SXMatrix(2)));
-  f.init();
+namespace CasADi{
 
-  MX X = msym("X",N,n);
-  MX total = 0;
-  for(int i=0; i<n; ++i){
-    MX Xcol = X(range(X.size1()),i);
-    total += f.call(vector<MX>(1,Xcol))[0];
-  }
-  MXFunction F(X,total);
-  F.setOption("verbose",true);
-  F.init();
+  /** \brief Internal class for QCQPQPInternal
+   * 
+      @copydoc QPSolver_doc
+   * */
+class QCQPQPInternal : public QPSolverInternal {
+  friend class QCQPQPSolver;
+public:
+
+  /** \brief  Clone */
+  virtual QCQPQPInternal* clone() const;
   
-/*  SXFunction FF(F);
-  FF.setOption("verbose",true);
-  FF.init();*/
-  
-  std::cout << "Please have a coffee break" << std::endl;
-  CRSSparsity Jsp = F.jacSparsity();
-  std::cout << "Hooray, finished before the universe ended" << std::endl;
-  std::cout << "Jsp = " << Jsp << std::endl;
+  /** \brief  Create a new Solver */
+  explicit QCQPQPInternal(const std::vector<CRSSparsity> &st);
 
-  return 0;
-}
+  /** \brief  Destructor */
+  virtual ~QCQPQPInternal();
+
+  /** \brief  Initialize */
+  virtual void init();
+  
+  virtual void evaluate(int nfdir, int nadir);
+  
+  protected:
+    QCQPSolver qcqpsolver_;
+
+};
+
+} // namespace CasADi
+
+#endif //QCQP_QP_INTERNAL_HPP
+

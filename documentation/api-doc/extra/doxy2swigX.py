@@ -25,6 +25,17 @@ import sys
 
 import ipdb
 import texttable
+import re
+
+aliases = {}
+for line in file('../Doxyfile.in','r'):
+  if line.startswith('ALIASES'):
+    m = re.search('\+=\s*(\w+)\s*=\s*"(.*?)"',line) 
+    if m:
+      aliases[m.group(1)]=m.group(2)
+
+print aliases
+
 
 def astext(node,whitespace=False,escape=True):
   r = []
@@ -269,6 +280,10 @@ class Doxy2SWIG_X(Doxy2SWIG):
         grouped_dict = {}
         for (origin,pieces) in v:
           total = u"".join(pieces)
+          totalnowrap = total.replace("\n"," ")
+          if (aliases["noswig"] in totalnowrap) or (aliases["nopython"] in totalnowrap):
+             print "skipping", origin
+             continue
           if total in grouped_dict:
              grouped_dict[total][0].append(origin)
           else:

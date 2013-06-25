@@ -74,9 +74,6 @@ namespace CasADi{
     // Solve linear system of equations
     OP_SOLVE,
   
-    // Solve nonlinear system of equations
-    OP_NONLINEAR_SOLVE,
-  
     // Matrix transpose
     OP_TRANSPOSE,
 
@@ -91,6 +88,9 @@ namespace CasADi{
 
     // Vertical concatenation
     OP_VERTCAT,
+
+    // Vertical split
+    OP_VERTSPLIT,
 
     // Reshape an expression
     OP_RESHAPE,

@@ -65,7 +65,7 @@ for oldenum, newenum, string , io in [
   ("NLP_UBX","NLP_SOLVER_UBX","ubx","input"),
   ("NLP_LBG","NLP_SOLVER_LBG","lbg","input"),
   ("NLP_UBG","NLP_SOLVER_UBG","ubg","input"),
-  ("NLP_LAMBDA_INIT","NLP_SOLVER_LAMB_G0","lam_g0","input"),
+  ("NLP_LAMBDA_INIT","NLP_SOLVER_LAM_G0","lam_g0","input"),
   ("NLP_P","NLP_SOLVER_P","p","input"),
   ("NLP_X_OPT","NLP_SOLVER_X","x","output"),
   ("NLP_COST","NLP_SOLVER_F","f","output"),
@@ -87,14 +87,19 @@ NLP_UBX = deprecated["NLP_UBX"]
 NLP_LBG = deprecated["NLP_LBG"]
 NLP_UBG = deprecated["NLP_UBG"]
 NLP_LAMBDA_INIT = deprecated["NLP_LAMBDA_INIT"]
-NLP_P = deprecated["NLP_P"]
 NLP_X_OPT = deprecated["NLP_X_OPT"]
 NLP_COST = deprecated["NLP_COST"]
 NLP_LAMBDA_G = deprecated["NLP_LAMBDA_G"]
 NLP_LAMBDA_X = deprecated["NLP_LAMBDA_X"]
+
+# The following has new implementations, currently named NL_P, etc. Remove in next release.
+NLP_P = deprecated["NLP_P"]
 NLP_G = deprecated["NLP_G"]
 NLP_NUM_IN = deprecated["NLP_NUM_IN"]
 NLP_NUM_OUT = deprecated["NLP_NUM_OUT"]
+
+
+
 
 __version__ = CasadiMeta.getVersion()
 if '+' in __version__ and CasadiMeta.getGitDescribe()!='':

@@ -285,8 +285,11 @@ namespace CasADi{
     /// Get an IMatrix representation of a GetNonzeros or SetNonzeros node
     virtual Matrix<int> mapping() const;
 
-    /// Solve a system of nonlinear equations
+    /// Create a vertical concatenation node
     static MX getVertcat(const std::vector<MX>& x);
+
+    /// Create a vertical split node
+    std::vector<MX> getVertsplit(const std::vector<int>& output_offset) const;
 
     /// Transpose
     virtual MX getTranspose() const;
@@ -299,9 +302,6 @@ namespace CasADi{
 
     /// Solve a system of linear equations
     virtual MX getSolve(const MX& r, bool tr, const LinearSolver& linear_solver) const;
-
-    /// Solve a system of nonlinear equations
-    static MX getNonlinearSolve(const std::vector<MX>& x, const ImplicitFunction& implicit_function);
 
     /// Get the nonzeros of matrix
     virtual MX getGetNonzeros(const CRSSparsity& sp, const std::vector<int>& nz) const;
@@ -362,8 +362,6 @@ namespace CasADi{
     
     /** \brief  The sparsity pattern */
     CRSSparsity sparsity_;
-    
-  protected:
 
     /** \brief  Evaluate the function (no work)*/
     virtual void evaluateD(const DMatrixPtrV& input, DMatrixPtrV& output, 
@@ -381,6 +379,9 @@ namespace CasADi{
     /** \brief Free adjoint memory */
     template<typename T> 
     static void clearVector(const std::vector<std::vector<T*> > v);
+
+    /** \brief Free adjoint memory (MX) */
+    static void clearVector(const std::vector<std::vector<MX*> > v);
   };
 
   // Implementations

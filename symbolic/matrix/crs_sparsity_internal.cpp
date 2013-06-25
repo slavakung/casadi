@@ -2023,6 +2023,16 @@ namespace CasADi{
     }
     return nnz;
   }
+  
+  int CRSSparsityInternal::sizeD() const{
+    int nnz = 0;
+    for(int r=0; r<nrow_; ++r){
+      for(int el = rowind_[r]; el < rowind_[r+1]; ++el){
+        nnz += col_[el]==r;
+      }
+    }
+    return nnz;
+  }
 
   int CRSSparsityInternal::sizeL() const{
     int nnz = 0;
@@ -2707,8 +2717,24 @@ namespace CasADi{
     // Quick return if no elements
     if(indices.empty()) return;
 
+    // Make a sanity check
+    int last=-1;
+    for(vector<int>::iterator it=indices.begin(); it!=indices.end(); ++it){
+      if(*it>=0){
+        int el_row = *it % nrow_;
+        int el_col = *it / nrow_;
+        int el = ncol_*el_row + el_col;
+        casadi_assert_message(el>=last,"Elements must be sorted row-wise in non-decreasing order");
+        last = el;
+      }
+    }
+
+    // Quick return if no elements
+    if(last<0) return;
+
     // Iterator to input/output
     vector<int>::iterator it=indices.begin();
+    while(*it<0) it++; // first non-ignored
 
     // Current element sought
     int el_row = *it % nrow_;
@@ -2742,7 +2768,9 @@ namespace CasADi{
           *it = el;
 
           // Increase index and terminate if end of vector reached
-          if(++it==indices.end()) return;
+          do{
+            if(++it==indices.end()) return;
+          } while(*it<0);
 
           // Next element sought
           el_row = *it % nrow_;

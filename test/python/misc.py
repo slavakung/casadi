@@ -79,12 +79,12 @@ class Misctests(casadiTestCase):
     
     self.assertRaises(RuntimeError,lambda : f.setOption("ad_mode","foo"))
     
-    x = SX("x")
-    f = SXFunction([x],[x])
+    x = ssym("x")
+    nlp = SXFunction(nlpIn(x=x),nlpOut(f=x))
 
     try:
         print "IpoptSolver"
-        g = IpoptSolver(f,FX())
+        g = IpoptSolver(nlp)
     except:
         return
     
@@ -123,14 +123,14 @@ class Misctests(casadiTestCase):
 
     f = SXFunction([x],[2*x])
     f.init()
-    f.input(0).setAll(2)
+    f.setInput(2,0)
     g = SXFunction(f)
 
-    f.input(0).set(5)
+    f.setInput(5,0)
     f.evaluate()
 
-    self.assertEqual(g.input(0),5)
-    self.assertEqual(g.output(),10)
+    self.assertEqual(g.getInput(0),5)
+    self.assertEqual(g.getOutput(),10)
 
     
   def test_copy_norefcount(self):
@@ -167,14 +167,14 @@ class Misctests(casadiTestCase):
 
     f = SXFunction([x],[2*x])
     f.init()
-    f.input(0).setAll(2)
+    f.setInput(2,0)
     g = copy.copy(f)
 
-    f.input(0).set(5)
+    f.setInput(5,0)
     f.evaluate()
 
-    self.assertEqual(g.input(0),5)
-    self.assertEqual(g.output(),10)
+    self.assertEqual(g.getInput(0),5)
+    self.assertEqual(g.getOutput(),10)
     
   def test_deepcopy_norefcount(self):
     self.message("Deep copy for non-refcounted classes")
@@ -210,22 +210,21 @@ class Misctests(casadiTestCase):
 
     f = SXFunction([x],[2*x])
     f.init()
-    f.input(0).setAll(2)
+    f.setInput(2,0)
     g = copy.deepcopy(f)
 
-    f.input(0).set(5)
+    f.setInput(5,0)
     f.evaluate()
 
-    self.assertEqual(g.input(0),2)
-    self.assertEqual(g.output(),0)
+    self.assertEqual(g.getInput(0),2)
+    self.assertEqual(g.getOutput(),0)
 
   @requires("IpoptSolver")
   def test_options_introspection(self):
     self.message("options introspection")
-    x=SX("x")
-    f = SXFunction([x],[x**2])
-    f.init()
-    i = IpoptSolver(f,FX())
+    x=ssym("x")
+    nlp = SXFunction(nlpIn(x=x),nlpOut(f=x**2))
+    i = IpoptSolver(nlp)
     
     opts = i.getOptionNames()
     self.assertTrue(isinstance(opts,tuple))
@@ -310,11 +309,10 @@ class Misctests(casadiTestCase):
     
   def test_IOscheme_indexing(self):
     self.message("IOscheme indexing")
-    x = ssym("x")
-    s = daeIn(x=x)
+    s = daeIn(x=2)
     
-    self.assertTrue(isEqual(s[0],x))
-    self.assertTrue(isEqual(s["x"],x))
+    self.assertEqual(s[0],2)
+    self.assertEqual(s["x"],2)
     with self.assertRaises(Exception):
       s["xfgfd"]
     with self.assertRaises(Exception):
@@ -322,16 +320,16 @@ class Misctests(casadiTestCase):
     s[-1]
     
   def test_IOscheme_output(self):
-    x = ssym("x")
-    p = ssym("p")
+    x = 2
+    p = 3
     s = daeIn(x=x,p=p)
     
     pp, = daeIn(s,"p")
-    self.assertTrue(isEqual(pp,p))
+    self.assertEqual(pp,p)
     
     xx,pp = daeIn(s,"x","p")
-    self.assertTrue(isEqual(pp,p))
-    self.assertTrue(isEqual(xx,x))
+    self.assertEqual(pp,p)
+    self.assertEqual(xx,x)
     
 if __name__ == '__main__':
     unittest.main()

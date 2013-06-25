@@ -34,6 +34,21 @@ namespace CasADi{
     return MXNode::getVertcat(comp);
   }
 
+  std::vector<MX> vertsplit(const MX& x, const std::vector<int>& offset){
+    // Consistency check
+    casadi_assert(offset.size()>=1);
+    casadi_assert(offset.front()==0);
+    casadi_assert(offset.back()<=x.size1());
+    casadi_assert(isMonotone(offset));
+    
+    // Trivial return if possible
+    if(offset.size()==1 || (offset.size()==2 && offset.back()==x.size1())){
+      return vector<MX>(1,x);
+    } else {
+      return x->getVertsplit(offset);
+    }
+  }
+
   MX horzcat(const vector<MX>& comp){
     vector<MX> v(comp.size());
     for(int i=0; i<v.size(); ++i)
@@ -370,6 +385,29 @@ namespace CasADi{
   
     // Create a reference to the nonzeros
     return x->getGetNonzeros(sp,mapping);
+  }
+  
+  MX blkdiag(const std::vector<MX> &A) {
+    // This implementation does not pretend to be efficient
+    int row=0;
+    int col=0;
+    for (int i=0;i<A.size();++i) {
+      row+=A[i].size1();
+      col+=A[i].size2();
+    }
+    
+    MX ret = MX(row,col);
+    
+    row = 0;
+    col = 0;
+    
+    for (int i=0;i<A.size();++i) {
+      ret(range(row,row+A[i].size1()),range(col,col+A[i].size2())) = A[i];
+      row+=A[i].size1();
+      col+=A[i].size2();
+    }
+    
+    return ret;
   }
 
   int countNodes(const MX& A){
@@ -716,14 +754,6 @@ namespace CasADi{
     }
   }
 
-  MX solve(const MX& A, const MX& r, const LinearSolver& linear_solver){
-    return trans(A->getSolve(trans(r),true,linear_solver));
-  }
-
-  MX nl_solve(const std::vector<MX>& x, const ImplicitFunction& implicit_function){
-    return MXNode::getNonlinearSolve(x,implicit_function);
-  }
-
   MX jacobian(const MX& ex, const MX &arg) {
     MXFunction temp(arg,ex); // make a runtime
     temp.init();
@@ -742,6 +772,10 @@ namespace CasADi{
       ret.push_back(horzcat(v[i]));
     return vertcat(ret);
   }
+  
+  MX blockcat(const MX &A,const MX &B,const MX &C,const MX &D) {
+    return vertcat(horzcat(A,B),horzcat(C,D));
+  }
 
   MX det(const MX& A){
     return A->getDeterminant();
@@ -758,6 +792,13 @@ namespace CasADi{
       casadi_error("Cannot check regularity for symbolic MX");
     }
   }
+  
+  std::vector<MX> getSymbols(const MX& e) {
+    MXFunction f(std::vector<MX>(),e);
+    f.init();
+    return f.getFree();
+  }
+
 
 } // namespace CasADi
 

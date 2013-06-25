@@ -109,7 +109,7 @@ namespace CasADi{
     CRSSparsity A_sparsity = jacG().isNull() ? CRSSparsity(0,nx_,false) : jacG().output().sparsity();
 
     QPSolverCreator qp_solver_creator = getOption("qp_solver");
-    qp_solver_ = qp_solver_creator(H_sparsity,A_sparsity);
+    qp_solver_ = qp_solver_creator(qpStruct("h",H_sparsity,"a",A_sparsity));
 
     // Set options if provided
     if(hasSetOption("qp_solver_options")){
@@ -247,8 +247,8 @@ namespace CasADi{
   
     // Initialize Lagrange multipliers of the NLP
     copy(input(NLP_SOLVER_LAM_G0).begin(),input(NLP_SOLVER_LAM_G0).end(),mu_.begin());
-    copy(output(NLP_SOLVER_LAM_X).begin(),output(NLP_SOLVER_LAM_X).end(),mu_x_.begin()); // this is probably a bug
     copy(input(NLP_SOLVER_LAM_G0).begin(),input(NLP_SOLVER_LAM_G0).end(),mu_e_.begin());
+    copy(input(NLP_SOLVER_LAM_X0).begin(),input(NLP_SOLVER_LAM_X0).end(),mu_x_.begin());
 
     // Initial constraint Jacobian
     eval_jac_g(x_,gk_,Jk_);
@@ -668,19 +668,19 @@ namespace CasADi{
       if(ng_==0) return;
       
       // Pass the argument to the function
-      nlp_.setInput(x,NLP_X);
-      nlp_.setInput(input(NLP_SOLVER_P),NLP_P);
+      nlp_.setInput(x,NL_X);
+      nlp_.setInput(input(NLP_SOLVER_P),NL_P);
       
       // Evaluate the function and tape
       nlp_.evaluate();
       
       // Ge the result
-      nlp_.output(NLP_G).get(g,DENSE);
+      nlp_.output(NL_G).get(g,DENSE);
       
       // Printing
       if(monitored("eval_g")){
-        cout << "x = " << nlp_.input(NLP_X) << endl;
-        cout << "g = " << nlp_.output(NLP_G) << endl;
+        cout << "x = " << nlp_.input(NL_X) << endl;
+        cout << "g = " << nlp_.output(NL_G) << endl;
       }
     } catch (exception& ex){
       cerr << "eval_g failed: " << ex.what() << endl;
@@ -697,14 +697,14 @@ namespace CasADi{
       FX& jacG = this->jacG();
 
       // Pass the argument to the function
-      jacG.setInput(x,NLP_X);
-      jacG.setInput(input(NLP_SOLVER_P),NLP_P);
+      jacG.setInput(x,NL_X);
+      jacG.setInput(input(NLP_SOLVER_P),NL_P);
       
       // Evaluate the function
       jacG.evaluate();
       
       // Get the output
-      jacG.output(1+NLP_G).get(g,DENSE);
+      jacG.output(1+NL_G).get(g,DENSE);
       jacG.output().get(J);
 
       if (monitored("eval_jac_g")) {
@@ -725,15 +725,15 @@ namespace CasADi{
       FX& gradF = this->gradF();
 
       // Pass the argument to the function
-      gradF.setInput(x,NLP_X);
-      gradF.setInput(input(NLP_SOLVER_P),NLP_P);
+      gradF.setInput(x,NL_X);
+      gradF.setInput(input(NLP_SOLVER_P),NL_P);
       
       // Evaluate, adjoint mode
       gradF.evaluate();
       
       // Get the result
       gradF.output().get(grad_f,DENSE);
-      gradF.output(1+NLP_X).get(f);
+      gradF.output(1+NL_X).get(f);
       
       // Printing
       if (monitored("eval_f")){
@@ -754,18 +754,18 @@ namespace CasADi{
   void SQPInternal::eval_f(const std::vector<double>& x, double& f){
     try {
       // Pass the argument to the function
-      nlp_.setInput(x,NLP_X);
-      nlp_.setInput(input(NLP_SOLVER_P),NLP_P);
+      nlp_.setInput(x,NL_X);
+      nlp_.setInput(input(NLP_SOLVER_P),NL_P);
       
       // Evaluate the function
       nlp_.evaluate();
 
       // Get the result
-      nlp_.getOutput(f,NLP_F);
+      nlp_.getOutput(f,NL_F);
 
       // Printing
       if(monitored("eval_f")){
-        cout << "x = " << nlp_.input(NLP_X) << endl;
+        cout << "x = " << nlp_.input(NL_X) << endl;
         cout << "f = " << f << endl;
       }
     } catch (exception& ex){
@@ -780,24 +780,24 @@ namespace CasADi{
                              std::vector<double>& x_opt, std::vector<double>& lambda_x_opt, std::vector<double>& lambda_A_opt){
 
     // Pass data to QP solver
-    qp_solver_.setInput(H, QP_H);
-    qp_solver_.setInput(g,QP_G);
+    qp_solver_.setInput(H, QP_SOLVER_H);
+    qp_solver_.setInput(g,QP_SOLVER_G);
 
     // Hot-starting if possible
-    qp_solver_.setInput(x_opt, QP_X_INIT);
+    qp_solver_.setInput(x_opt, QP_SOLVER_X0);
   
     //TODO: Fix hot-starting of dual variables
-    //qp_solver_.setInput(lambda_A_opt, QP_LAMBDA_INIT);
+    //qp_solver_.setInput(lambda_A_opt, QP_SOLVER_LAMBDA_INIT);
   
     // Pass simple bounds
-    qp_solver_.setInput(lbx, QP_LBX);
-    qp_solver_.setInput(ubx, QP_UBX);
+    qp_solver_.setInput(lbx, QP_SOLVER_LBX);
+    qp_solver_.setInput(ubx, QP_SOLVER_UBX);
 
     // Pass linear bounds
     if(ng_>0){
-      qp_solver_.setInput(A, QP_A);
-      qp_solver_.setInput(lbA, QP_LBA);
-      qp_solver_.setInput(ubA, QP_UBA);
+      qp_solver_.setInput(A, QP_SOLVER_A);
+      qp_solver_.setInput(lbA, QP_SOLVER_LBA);
+      qp_solver_.setInput(ubA, QP_SOLVER_UBA);
     }
   
     if (monitored("qp")) {
@@ -816,9 +816,9 @@ namespace CasADi{
     qp_solver_.evaluate();
   
     // Get the optimal solution
-    qp_solver_.getOutput(x_opt,QP_PRIMAL);
-    qp_solver_.getOutput(lambda_x_opt,QP_LAMBDA_X);
-    qp_solver_.getOutput(lambda_A_opt,QP_LAMBDA_A);
+    qp_solver_.getOutput(x_opt,QP_SOLVER_X);
+    qp_solver_.getOutput(lambda_x_opt,QP_SOLVER_LAM_X);
+    qp_solver_.getOutput(lambda_A_opt,QP_SOLVER_LAM_A);
     if (monitored("dx")){
       cout << "dx = " << x_opt << endl;
     }
