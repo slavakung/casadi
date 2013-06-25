@@ -51,9 +51,20 @@ namespace CasADi{
     addOption("lbfgs_memory",      OT_INTEGER,     10,              "Size of L-BFGS memory.");
     addOption("regularize",        OT_BOOLEAN,  false,              "Automatic regularization of Lagrange Hessian.");
     addOption("print_header",      OT_BOOLEAN,   true,              "Print the header with problem statistics");
-  
+    
     // Monitors
     addOption("monitor",      OT_STRINGVECTOR, GenericType(),  "", "eval_f|eval_g|eval_jac_g|eval_grad_f|eval_h|qp|dx", true);
+
+    // New
+    addOption("eps_active",        OT_REAL,      1e-6,              "Threshold for the epsilon-active set.");
+    addOption("nu",                OT_REAL,      0,                 "Parameter for primal-dual augmented Lagrangian.");
+    addOption("phiWeight",         OT_REAL,      1e-5,              "Weight used in pseudo-filter.");
+    addOption("dvMax0",            OT_REAL,      100,               "Parameter used to defined the max step length.");
+    addOption("tau0",              OT_REAL,      1e-2,              "Initial parameter for the merit function optimality threshold.");
+    addOption("yEinitial",         OT_STRING,    'simple',          "Initial multiplier. Simple (all zero) or least (LSQ).");
+    addOption("alphaMin",          OT_REAL,      1e-3,              "Used to check whether to increase rho.");
+    addOption("sigmaMax",            OT_REAL,      1e+14,             "Maximum rho allowed.");
+    addOption("muR0",              OT_REAL,      1e-4,              "Initial choice of regularization parameter");
   }
 
 
@@ -75,7 +86,16 @@ namespace CasADi{
     tol_du_ = getOption("tol_du");
     regularize_ = getOption("regularize");
     exact_hessian_ = getOption("hessian_approximation")=="exact";
-  
+    
+    eps_active_ = getOption("eps_active");
+    nu_ = getOption("nu");
+    phiWeight_ = getOption("getWeight");
+    dvMax_ = getOption("dvMax0");
+    tau_ = getOption("tau0");
+    alphaMin_ = getOption("alphaMin");
+    sigmaMax_ = getOption("sigmaMax");    
+    muR_ = getOption("muR0");
+ 
     // Get/generate required functions
     gradF();
     jacG();
@@ -101,6 +121,7 @@ namespace CasADi{
     // Lagrange multipliers of the NLP
     mu_.resize(ng_);
     mu_x_.resize(nx_);
+    mu_e_.resize(ng_);
   
     // Lagrange gradient in the next iterate
     gLag_.resize(nx_);
@@ -121,9 +142,10 @@ namespace CasADi{
     // Jacobian
     Jk_ = DMatrix(A_sparsity);
 
+
     // Bounds of the QP
-    qp_LBA_.resize(ng_);
-    qp_UBA_.resize(ng_);
+    // qp_LBA_.resize(ng_);
+    // qp_UBA_.resize(ng_);
     qp_LBX_.resize(nx_);
     qp_UBX_.resize(nx_);
 
@@ -134,6 +156,10 @@ namespace CasADi{
 
     // Gradient of the objective
     gf_.resize(nx_);
+
+    // Primal-dual variables
+    v_.resize(nx_+ng_);
+    
 
     // Create Hessian update function
     if(!exact_hessian_){
@@ -203,20 +229,47 @@ namespace CasADi{
     const vector<double>& ubx = input(NLP_SOLVER_UBX).data();
     const vector<double>& lbg = input(NLP_SOLVER_LBG).data();
     const vector<double>& ubg = input(NLP_SOLVER_UBG).data();
-      
+    //vector<double>& lbv, ubv;
+
+    //set primal-dual bounds
+    //v.resize(nx_+ng_);
+    //v.resize(nx_+ng_);
+    //copy(lbx.begin(),lbx.end(),lbv.begin());
+    
+ 
     // Set linearization point to initial guess
     copy(x_init.begin(),x_init.end(),x_.begin());
+    for (int i=0;i<nx_;++i) {
+      x_[i] = std::max(x_[i],lbx_[i]);
+      x_[i] = std::min(x_[i],ubx_[i]);
+    }
+
   
     // Initialize Lagrange multipliers of the NLP
     copy(input(NLP_SOLVER_LAM_G0).begin(),input(NLP_SOLVER_LAM_G0).end(),mu_.begin());
-    copy(output(NLP_SOLVER_LAM_X).begin(),output(NLP_SOLVER_LAM_X).end(),mu_x_.begin());
+    copy(output(NLP_SOLVER_LAM_X).begin(),output(NLP_SOLVER_LAM_X).end(),mu_x_.begin()); // this is probably a bug
+    copy(input(NLP_SOLVER_LAM_G0).begin(),input(NLP_SOLVER_LAM_G0).end(),mu_e_.begin());
 
     // Initial constraint Jacobian
     eval_jac_g(x_,gk_,Jk_);
-  
+
+    for (int i=0;i<ng_;++i)
+      s_[i] = std::min(gk_[i],ubg_[i]);
+    for (int i=0;i<ng_;++i)
+      s_[i] = std::max(s_[i],lbg_[i]);
+    for (int i=0;i<ng_;++i)
+      gsk_[i] = gk[i]-s_[i];    
+
+    normc_ = norm_2(gk_);
+    normcs_ = norm_2(gsk_);
+
     // Initial objective gradient
     eval_grad_f(x_,fk_,gf_);
   
+    normgf_ = norm_2(gf_);
+
+    // EDIT: SCALING
+
     // Initialize or reset the Hessian or Hessian approximation
     reg_ = 0;
     if(exact_hessian_){
@@ -224,6 +277,7 @@ namespace CasADi{
     } else {
       reset_h();
     }
+    // EDIT: HIk_
 
     // Evaluate the initial gradient of the Lagrangian
     copy(gf_.begin(),gf_.end(),gLag_.begin());
@@ -242,7 +296,7 @@ namespace CasADi{
   
     // Reset
     merit_mem_.clear();
-    sigma_ = 0.;    // NOTE: Move this into the main optimization loop
+    sigma_ = 1.;
 
     // Default stepsize
     double t = 0;
@@ -280,12 +334,20 @@ namespace CasADi{
           break;
         }
       }
-    
+      
+      scaleg_ = 1+normc_*normJ_;
+      scaleglag_ = std::max(1, std::max(normgf_,std::max(1,norm_2(mu_)) * normJ_));
+      
       // Checking convergence criteria
-      if (pr_inf < tol_pr_ && gLag_norm1 < tol_du_){
+      if (pr_inf/scaleg_ < tol_pr_ && gLag_norm1/scaleglag_ < tol_du_){
         cout << endl;
         cout << "CasADi::SQPMethod: Convergence achieved after " << iter << " iterations." << endl;
         break;
+      }
+
+      if (iter==0) {
+	phiMaxO_ = std::max(gLag_norm1+pr_inf+10,1000);
+        phiMaxV_ = phiMaxO_;
       }
     
       if (iter >= max_iter_){
@@ -311,6 +373,8 @@ namespace CasADi{
       double gain = quad_form(dx_,Bk_);
       if (gain < 0){
         casadi_warning("Indefinite Hessian detected...");
+         copy(gf_.begin(),gf_.end(),dx_.begin());
+	      for (int i=0;i<nx_;++i) dx_[i] = -dx_[i];
       }
         
       // Calculate penalty parameter of merit function

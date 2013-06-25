@@ -56,6 +56,21 @@ public:
   /// Tolerance of dual infeasibility
   double tol_du_;
 
+  // Merit function parameters
+  double nu_;
+  double muR_;
+  double muLS;
+  
+
+  // Optimality measure and adjustment parameters
+  double tau_;
+  double phiWeight_;
+  double yMax_;
+  double phiComb_;
+  double phiMaxO, phiMaxV;
+  
+  
+
   /// Linesearch parameters
   //@{
   double sigma_;
@@ -63,31 +78,40 @@ public:
   double beta_;
   int max_iter_ls_;
   int merit_memsize_;
+  double sigmaMax_;
+  double dvMax_;
+  double alphaMin_;
   //@}
 
   /// Hessian regularization
   double reg_;
-  
+  double eps_active_;
+  double muH_;
+
   /// Access QPSolver
   const QPSolver getQPSolver() const { return qp_solver_;}
   
   /// Lagrange multipliers of the NLP
-  std::vector<double> mu_, mu_x_;
+  std::vector<double> mu_, mu_x_, mu_e_;
   
   /// Current cost function value
   double fk_;
-  
+
+  /// Norms and scaling
+  double normc_, normcs_, normJ_, normgf_, scaleglag_, scaleg_; 
+
+
   /// Current and previous linearization point and candidate
-  std::vector<double> x_, x_old_, x_cand_;
+  std::vector<double> x_, x_old_, x_cand_, s_, v_;
   
   /// Lagrange gradient in the next iterate
   std::vector<double> gLag_, gLag_old_;
   
   /// Constraint function value
-  std::vector<double> gk_, gk_cand_;
+  std::vector<double> gk_, gk_cand_, gsk_;
   
   /// Gradient of the objective function
-  std::vector<double> gf_;
+  std::vector<double> gf_, gfs_;
 
   /// BFGS update function
   enum BFGSMdoe{ BFGS_BK, BFGS_X, BFGS_X_OLD, BFGS_GLAG, BFGS_GLAG_OLD, BFGS_NUM_IN}; 
@@ -97,10 +121,10 @@ public:
   DMatrix B_init_;
   
   /// Current Hessian approximation
-  DMatrix Bk_;
+  DMatrix Bk_, BIk_;
   
   // Current Jacobian
-  DMatrix Jk_;
+  DMatrix Jk_, JIk_;
 
   // Bounds of the QP
   std::vector<double> qp_LBA_, qp_UBA_, qp_LBX_, qp_UBX_;

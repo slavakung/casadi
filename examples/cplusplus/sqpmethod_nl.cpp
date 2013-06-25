@@ -56,7 +56,8 @@ int main(int argc, char **argv){
   // nlp_solver.setOption("max_iter",10);
   // nlp_solver.setOption("verbose",true);
   // nlp_solver.setOption("linear_solver","ma57");
-  nlp_solver.setOption("hessian_approximation","exact");
+  // nlp_solver.setOption("hessian_approximation","exact");
+  nlp_solver.setOption("hessian_approximation","bfgs");
   // nlp_solver.setOption("derivative_test","second-order");
 
   // Specify QP solver
