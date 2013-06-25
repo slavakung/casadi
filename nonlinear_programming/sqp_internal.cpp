@@ -61,7 +61,7 @@ namespace CasADi{
     addOption("phiWeight",         OT_REAL,      1e-5,              "Weight used in pseudo-filter.");
     addOption("dvMax0",            OT_REAL,      100,               "Parameter used to defined the max step length.");
     addOption("tau0",              OT_REAL,      1e-2,              "Initial parameter for the merit function optimality threshold.");
-    addOption("yEinitial",         OT_STRING,    'simple',          "Initial multiplier. Simple (all zero) or least (LSQ).");
+    addOption("yEinitial",         OT_STRING,    "simple",          "Initial multiplier. Simple (all zero) or least (LSQ).");
     addOption("alphaMin",          OT_REAL,      1e-3,              "Used to check whether to increase rho.");
     addOption("sigmaMax",            OT_REAL,      1e+14,             "Maximum rho allowed.");
     addOption("muR0",              OT_REAL,      1e-4,              "Initial choice of regularization parameter");
@@ -89,7 +89,7 @@ namespace CasADi{
     
     eps_active_ = getOption("eps_active");
     nu_ = getOption("nu");
-    phiWeight_ = getOption("getWeight");
+    phiWeight_ = getOption("phiWeight");
     dvMax_ = getOption("dvMax0");
     tau_ = getOption("tau0");
     alphaMin_ = getOption("alphaMin");
@@ -135,7 +135,8 @@ namespace CasADi{
     // Constraint function value
     gk_.resize(ng_);
     gk_cand_.resize(ng_);
-  
+    gsk_.resize(ng_);
+    s_.resize(ng_);
     // Hessian approximation
     Bk_ = DMatrix(H_sparsity);
   
@@ -144,8 +145,8 @@ namespace CasADi{
 
 
     // Bounds of the QP
-    // qp_LBA_.resize(ng_);
-    // qp_UBA_.resize(ng_);
+    qp_LBA_.resize(ng_);
+    qp_UBA_.resize(ng_);
     qp_LBX_.resize(nx_);
     qp_UBX_.resize(nx_);
 
@@ -236,29 +237,31 @@ namespace CasADi{
     //v.resize(nx_+ng_);
     //copy(lbx.begin(),lbx.end(),lbv.begin());
     
- 
+
     // Set linearization point to initial guess
     copy(x_init.begin(),x_init.end(),x_.begin());
     for (int i=0;i<nx_;++i) {
-      x_[i] = std::max(x_[i],lbx_[i]);
-      x_[i] = std::min(x_[i],ubx_[i]);
+      x_[i] = std::max(x_[i],lbx[i]);
+      x_[i] = std::min(x_[i],ubx[i]);
     }
 
-  
+
     // Initialize Lagrange multipliers of the NLP
     copy(input(NLP_SOLVER_LAM_G0).begin(),input(NLP_SOLVER_LAM_G0).end(),mu_.begin());
     copy(input(NLP_SOLVER_LAM_G0).begin(),input(NLP_SOLVER_LAM_G0).end(),mu_e_.begin());
     copy(input(NLP_SOLVER_LAM_X0).begin(),input(NLP_SOLVER_LAM_X0).end(),mu_x_.begin());
 
+
     // Initial constraint Jacobian
     eval_jac_g(x_,gk_,Jk_);
 
     for (int i=0;i<ng_;++i)
-      s_[i] = std::min(gk_[i],ubg_[i]);
+      s_[i] = std::min(gk_[i],ubg[i]);
     for (int i=0;i<ng_;++i)
-      s_[i] = std::max(s_[i],lbg_[i]);
+      s_[i] = std::max(s_[i],lbg[i]);
     for (int i=0;i<ng_;++i)
-      gsk_[i] = gk[i]-s_[i];    
+      gsk_[i] = gk_[i]-s_[i];    
+
 
     normc_ = norm_2(gk_);
     normcs_ = norm_2(gsk_);
@@ -268,7 +271,7 @@ namespace CasADi{
   
     normgf_ = norm_2(gf_);
 
-    // EDIT: SCALING
+
 
     // Initialize or reset the Hessian or Hessian approximation
     reg_ = 0;
@@ -277,7 +280,7 @@ namespace CasADi{
     } else {
       reset_h();
     }
-    // EDIT: HIk_
+
 
     // Evaluate the initial gradient of the Lagrangian
     copy(gf_.begin(),gf_.end(),gLag_.begin());
@@ -300,7 +303,7 @@ namespace CasADi{
 
     // Default stepsize
     double t = 0;
-  
+
     // MAIN OPTIMIZATION LOOP
     while(true){
     
@@ -334,9 +337,10 @@ namespace CasADi{
           break;
         }
       }
+      normJ_ = norm1matrix(Jk_);
       
       scaleg_ = 1+normc_*normJ_;
-      scaleglag_ = std::max(1, std::max(normgf_,std::max(1,norm_2(mu_)) * normJ_));
+      scaleglag_ = std::max(1., std::max(normgf_,std::max(1.,norm_2(mu_)) * normJ_));
       
       // Checking convergence criteria
       if (pr_inf/scaleg_ < tol_pr_ && gLag_norm1/scaleglag_ < tol_du_){
@@ -346,7 +350,7 @@ namespace CasADi{
       }
 
       if (iter==0) {
-	phiMaxO_ = std::max(gLag_norm1+pr_inf+10,1000);
+	phiMaxO_ = std::max(gLag_norm1+pr_inf+10.,1000.);
         phiMaxV_ = phiMaxO_;
       }
     
@@ -844,4 +848,35 @@ namespace CasADi{
     return pr_inf;
   }  
 
+  double SQPInternal::norm1matrix(const DMatrix& A) {
+    // Access the arrays
+    const std::vector<double>& v = A.data();
+    const std::vector<int>& col = A.col();
+    std::vector<double> sums(A.size2(),0);
+    for (int i=0;i<A.size();i++)
+      sums[col[i]] += abs(v[i]);
+    
+    return SQPInternal::norminf(sums);        
+    
+  }
+
+  double SQPInternal::norminf(std::vector<double> v) {
+    double max = 0;
+
+    for (int i=0;i<v.size();i++) {
+      if (v[i]> max)
+	max = v[i];
+    }
+    return max;
+
+  }
+  double SQPInternal::norm_2(std::vector<double> v) {
+    double val;
+    for (int i=0;i<v.size();i++) {
+      val+= v[i]*v[i];
+    }
+    val = sqrt(val);
+    return val;
+
+  }
 } // namespace CasADi

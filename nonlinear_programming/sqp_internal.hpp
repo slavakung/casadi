@@ -67,7 +67,7 @@ public:
   double phiWeight_;
   double yMax_;
   double phiComb_;
-  double phiMaxO, phiMaxV;
+  double phiMaxO_, phiMaxV_;
   
   
 
@@ -182,6 +182,13 @@ public:
   /// Calculates inner_prod(x,mul(A,x))
   static double quad_form(const std::vector<double>& x, const DMatrix& A);
   
+  /// Calculate inf norm of a vector
+  double norminf(std::vector<double> v);
+  double norm_2(std::vector<double> v);
+  /// Calculate 1-norm of a matrix
+  double norm1matrix(const DMatrix& A);
+  
+
 };
 
 } // namespace CasADi
