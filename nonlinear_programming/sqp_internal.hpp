@@ -177,7 +177,8 @@ public:
   virtual void solve_QP(const Matrix<double>& H, const std::vector<double>& g,
                         const std::vector<double>& lbx, const std::vector<double>& ubx,
                         const Matrix<double>& A, const std::vector<double>& lbA, const std::vector<double>& ubA,
-                        std::vector<double>& x_opt, std::vector<double>& lambda_x_opt, std::vector<double>& lambda_A_opt);
+                        std::vector<double>& x_opt, std::vector<double>& lambda_x_opt, std::vector<double>& lambda_A_opt,
+                        double muR, const std::vector<double> & mu, const std::vector<double> & muE);
   
   // Calculate the L1-norm of the primal infeasibility
   double primalInfeasibility(const std::vector<double>& x, const std::vector<double>& lbx, const std::vector<double>& ubx,
@@ -197,6 +198,9 @@ public:
   /// Matrix transpose and vector
   void mat_vectran(const std::vector<double>& x, const DMatrix& A, std::vector<double>& y);
   void mat_vec(const std::vector<double>& x, const DMatrix& A, std::vector<double>& y);
+  
+  /// Boolean to flag if QP should be stabilized manually
+  bool stabilize_;
 
 };
 } // namespace CasADi

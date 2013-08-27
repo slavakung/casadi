@@ -103,14 +103,26 @@ namespace CasADi{
     if(exact_hessian_){
       hessLag();
     }
+    
+    // TODO: make some Check here
+    stabilize_ = true;
 
     // Allocate a QP solver
     CRSSparsity H_sparsity = exact_hessian_ ? hessLag().output().sparsity() : sp_dense(nx_,nx_);
     H_sparsity = H_sparsity + DMatrix::eye(nx_).sparsity();
     CRSSparsity A_sparsity = jacG().isNull() ? CRSSparsity(0,nx_,false) : jacG().output().sparsity();
-
+    
+    CRSSparsity H_sparsity_qp = H_sparsity;
+    CRSSparsity A_sparsity_qp = A_sparsity;
+    
+    if (stabilize_) { // Stabilized QP sparsity
+      int nI = A_sparsity.size1();
+      H_sparsity_qp = blkdiag(H_sparsity,sp_diag(nI));
+      A_sparsity_qp = horzcat(A_sparsity,sp_diag(nI));
+    }
+    
     QPSolverCreator qp_solver_creator = getOption("qp_solver");
-    qp_solver_ = qp_solver_creator(qpStruct("h",H_sparsity,"a",A_sparsity));
+    qp_solver_ = qp_solver_creator(qpStruct("h",H_sparsity_qp,"a",A_sparsity_qp));
 
     // Set options if provided
     if(hasSetOption("qp_solver_options")){
@@ -412,45 +424,21 @@ namespace CasADi{
     
 
       // Formulate the QP
-      //transform(lbx.begin(),lbx.end(),x_.begin(),qp_LBX_.begin(),minus<double>());
-      //transform(ubx.begin(),ubx.end(),x_.begin(),qp_UBX_.begin(),minus<double>());
-      //transform(lbg.begin(),lbg.end(),gk_.begin(),qp_LBA_.begin(),minus<double>());
-      //transform(ubg.begin(),ubg.end(),gk_.begin(),qp_UBA_.begin(),minus<double>());
-
-      // Solve the QP
-      //solve_QP(Bk_,gf_,qp_LBX_,qp_UBX_,Jk_,qp_LBA_,qp_UBA_,dx_,qp_DUAL_X_,qp_DUAL_A_);
-
-      // set QPgk_, QPgf_, QPBk_, QPJk_
-      for (int i=0;i<nx_;++i) {
-         QPgf_[i] = gf_[i];
-      }
-      for (int i=0;i<ng_;++i) {
-         QPgf_[nx_+i] = muR_*mu_[i];
-         QPgk_[i] = gk_[i]+muR_*(mu_[i]-mu_e_[i]);
-      }
-
-      //QPBk_ = DMatrix(Bk_);
-      //QPBk_.resize(nx_+ng_,nx_+ng_);
-      //QPBk_.enlarge(ng_,ng_,indicesm,indicesm);
-      //QPJk_ = DMatrix(QPJk_);
-      //QPJk_.resize(ng_,nx_+ng_);
-      //QPJk_.enlarge(0,ng_,emptyvec,indicesm);
-
-      QPBk_.sparse(nx_+ng_,nx_+ng_);
-      QPJk_.sparse(ng_,nx_+ng_);
-
       transform(lbx.begin(),lbx.end(),x_.begin(),qp_LBX_.begin(),minus<double>());
       transform(ubx.begin(),ubx.end(),x_.begin(),qp_UBX_.begin(),minus<double>());
-      transform(lbg.begin(),lbg.end(),QPgk_.begin(),qp_LBA_.begin(),minus<double>());
-      transform(ubg.begin(),ubg.end(),QPgk_.begin(),qp_UBA_.begin(),minus<double>());
-      
-      // Solve the QP
-      solve_QP(QPBk_,QPgf_,qp_LBX_,qp_UBX_,QPJk_,qp_LBA_,qp_UBA_,dv_,qp_DUAL_X_,qp_DUAL_A_);
+      transform(lbg.begin(),lbg.end(),gk_.begin(),qp_LBA_.begin(),minus<double>());
+      transform(ubg.begin(),ubg.end(),gk_.begin(),qp_UBA_.begin(),minus<double>());
 
+      // Solve the QP
+      solve_QP(Bk_,gf_,qp_LBX_,qp_UBX_,Jk_,qp_LBA_,qp_UBA_,dx_,qp_DUAL_X_,qp_DUAL_A_,muR_,mu_,mu_e_);
+
+      /**
       for (int i=0;i<nx_;++i)
          dx_[i] = dv_[i];
       for (int i=0;i<ng_;++i) 
          dy_[i] = dv_[i+nx_];
+         
+      **/
 
       log("QP solved");
 
@@ -945,7 +933,8 @@ namespace CasADi{
   void SQPInternal::solve_QP(const Matrix<double>& H, const std::vector<double>& g,
                              const std::vector<double>& lbx, const std::vector<double>& ubx,
                              const Matrix<double>& A, const std::vector<double>& lbA, const std::vector<double>& ubA,
-                             std::vector<double>& x_opt, std::vector<double>& lambda_x_opt, std::vector<double>& lambda_A_opt){
+                             std::vector<double>& x_opt, std::vector<double>& lambda_x_opt, std::vector<double>& lambda_A_opt,
+                             double muR, const std::vector<double> & mu, const std::vector<double> & muE){
 
       cout << "H = " << endl;
       H.printDense();
@@ -957,34 +946,83 @@ namespace CasADi{
       cout << "lbA = " << lbA << endl;
       cout << "ubA = " << ubA << endl;
     //}
-
-
-    // Pass data to QP solver
-    cout <<"passing data H"<<endl;
-    QP_SOLVER_H.resize(nx_+ng_);
-    qp_solver_.setInput(H, QP_SOLVER_H);
-    cout <<"here after H"<<endl;
-    QP_SOLVER_G.resize(nx_+ng_);
-    qp_solver_.setInput(g,QP_SOLVER_G);
-    cout << "here ok" <<endl;
-    // Hot-starting if possible
-    qp_solver_.setInput(x_opt, QP_SOLVER_X0);
-    cout <<"now here ok" <<endl;
-    //TODO: Fix hot-starting of dual variables
-    //qp_solver_.setInput(lambda_A_opt, QP_SOLVER_LAMBDA_INIT);
-  
-    // Pass simple bounds
-    qp_solver_.setInput(lbx, QP_SOLVER_LBX);
-    qp_solver_.setInput(ubx, QP_SOLVER_UBX);
-    cout<<"bounds"<<endl;
-    // Pass linear bounds
-    if(ng_>0){
-      qp_solver_.setInput(A, QP_SOLVER_A);
-      qp_solver_.setInput(lbA, QP_SOLVER_LBA);
-      qp_solver_.setInput(ubA, QP_SOLVER_UBA);
+    
+    
+    // Hessian
+    if (stabilize_) {
+      // Construct stabilized H
+      DMatrix & H_qp = qp_solver_.input(QP_SOLVER_H);
+      std::copy(H.begin(),H.end(),H_qp.begin());
+      std::fill(H_qp.begin()+H.size(),H_qp.end(),muR);
+    } else {
+      qp_solver_.setInput(H, QP_SOLVER_H);
     }
+    std::cout << "orig H";
+    H.printDense();
+    std::cout << std::endl;
+    
+    std::cout << "new :";
+    qp_solver_.input(QP_SOLVER_H).printDense();
+    std::cout << std::endl;
+
+    // Pass linear bounds
+    if (ng_>0) {
+      qp_solver_.setInput(lbA,QP_SOLVER_LBA);
+      qp_solver_.setInput(ubA,QP_SOLVER_UBA);
+      
+      if (stabilize_) {
+        DMatrix & A_qp = qp_solver_.input(QP_SOLVER_A);
+        const std::vector <int> &A_rowind = A.rowind();
+        for (int i=0;i<A_qp.size1();++i) { // Loop over rows
+          int row_start = A_rowind[i];
+          int row_end = A_rowind[i+1];
+          // Copy row contents
+          std::copy(A.begin()+row_start,A.begin()+row_end,A_qp.begin()+row_start+i);
+          A_qp[row_end+i] = muR;
+        }
+        // Add constant to linear inequality 
+        for (int i=0;i<mu.size();++i) {
+          double extra = muR*(mu[i]-muE[i]);
+          qp_solver_.input(QP_SOLVER_LBA).at(i)+= extra;
+          qp_solver_.input(QP_SOLVER_UBA).at(i)+= extra;
+        }
+      } else {
+        qp_solver_.setInput(A, QP_SOLVER_A);
+      }
+
+    }
+    
+    std::cout << "orig A";
+    A.printDense();
+    std::cout << std::endl;
+    
+    std::cout << "new :";
+    qp_solver_.input(QP_SOLVER_A).printDense();
+    std::cout << std::endl;
+    
+    // g
+    if (stabilize_) {
+      std::copy(g.begin(),g.end(),qp_solver_.input(QP_SOLVER_G).begin());
+      for (int i=0;i<mu.size();++i) {
+        qp_solver_.input(QP_SOLVER_G).at(g.size()+i) = muR * mu[i];
+      }
+    } else {
+      qp_solver_.setInput(g,QP_SOLVER_G);
+    }
+
+    std::cout << "orig g" << g <<  std::endl;
+    std::cout << "new :" << qp_solver_.input(QP_SOLVER_G) << std::endl;
+
+    std::cout << "orig lbA" << lbA <<  std::endl;
+    std::cout << "new :" << qp_solver_.input(QP_SOLVER_LBA) << std::endl;
+    
+    std::cout << "orig ubA" << ubA <<  std::endl;
+    std::cout << "new :" << qp_solver_.input(QP_SOLVER_UBA) << std::endl;
+
+    // Hot-starting if possible
+    std::copy(x_opt.begin(),x_opt.end(),qp_solver_.input(QP_SOLVER_X0).begin());
   
-    //if (monitored("qp")) {
+    if (monitored("qp")) {
       cout << "H = " << endl;
       H.printDense();
       cout << "A = " << endl;
@@ -994,15 +1032,16 @@ namespace CasADi{
       cout << "ubx = " << ubx << endl;
       cout << "lbA = " << lbA << endl;
       cout << "ubA = " << ubA << endl;
-    //}
+    }
 
     // Solve the QP
     qp_solver_.evaluate();
   
     // Get the optimal solution
-    qp_solver_.getOutput(x_opt,QP_SOLVER_X);
-    qp_solver_.getOutput(lambda_x_opt,QP_SOLVER_LAM_X);
-    qp_solver_.getOutput(lambda_A_opt,QP_SOLVER_LAM_A);
+    std::copy(qp_solver_.output(QP_SOLVER_X).begin(),qp_solver_.output(QP_SOLVER_X).begin()+nx_,x_opt.begin());
+    std::copy(qp_solver_.output(QP_SOLVER_LAM_X).begin(),qp_solver_.output(QP_SOLVER_LAM_X).begin()+nx_,lambda_x_opt.begin());
+    std::copy(qp_solver_.output(QP_SOLVER_LAM_A).begin(),qp_solver_.output(QP_SOLVER_LAM_A).begin()+ng_,lambda_A_opt.begin());
+    
     if (monitored("dx")){
       cout << "dx = " << x_opt << endl;
     }
