@@ -60,6 +60,7 @@ public:
   double nu_;
   double muR_;
   double muLS;
+  double Merit_,Merit_cand_, Merit_mu_,Merit_mu_cand_;
   
 
   // Optimality measure and adjustment parameters
@@ -92,26 +93,29 @@ public:
   const QPSolver getQPSolver() const { return qp_solver_;}
   
   /// Lagrange multipliers of the NLP
-  std::vector<double> mu_, mu_x_, mu_e_;
+  std::vector<double> mu_, mu_x_, mu_e_, pi_, pi2_;
+
+  /// gradient of the merit function
+  std::vector<double> gradm_, gradms_;
   
   /// Current cost function value
-  double fk_;
+  double fk_, fk_cand_;
 
   /// Norms and scaling
-  double normc_, normcs_, normJ_, normgf_, scaleglag_, scaleg_; 
+  double normc_, normcs_, normJ_, normgf_, scaleglag_, scaleg_, normc_cand_, normcs_cand_; 
 
 
   /// Current and previous linearization point and candidate
-  std::vector<double> x_, x_old_, x_cand_, s_, v_;
+  std::vector<double> x_, x_old_, x_cand_, mu_cand_, s_, s_cand_, v_, xtmp_;
   
   /// Lagrange gradient in the next iterate
-  std::vector<double> gLag_, gLag_old_;
+  std::vector<double> gLag_, gLag_old_, dualpen_;
   
   /// Constraint function value
-  std::vector<double> gk_, gk_cand_, gsk_;
+  std::vector<double> gk_, QPgk_, gsk_,gk_cand_, gsk_cand_;
   
   /// Gradient of the objective function
-  std::vector<double> gf_, gfs_;
+  std::vector<double> gf_, QPgf_;
 
   /// BFGS update function
   enum BFGSMdoe{ BFGS_BK, BFGS_X, BFGS_X_OLD, BFGS_GLAG, BFGS_GLAG_OLD, BFGS_NUM_IN}; 
@@ -121,16 +125,16 @@ public:
   DMatrix B_init_;
   
   /// Current Hessian approximation
-  DMatrix Bk_, BIk_;
+  DMatrix Bk_, QPBk_;
   
   // Current Jacobian
-  DMatrix Jk_, JIk_;
+  DMatrix Jk_, QPJk_;
 
   // Bounds of the QP
   std::vector<double> qp_LBA_, qp_UBA_, qp_LBX_, qp_UBX_;
 
   // QP solution
-  std::vector<double> dx_, qp_DUAL_X_, qp_DUAL_A_;
+  std::vector<double> dx_, qp_DUAL_X_, qp_DUAL_A_, ds_, dy_, dv_;
 
   /// Regularization
   bool regularize_;
@@ -188,9 +192,13 @@ public:
   /// Calculate 1-norm of a matrix
   double norm1matrix(const DMatrix& A);
   
+  /// Calculate the merit function gradient
+  void meritfg();
+  /// Matrix transpose and vector
+  void mat_vectran(const std::vector<double>& x, const DMatrix& A, std::vector<double>& y);
+  void mat_vec(const std::vector<double>& x, const DMatrix& A, std::vector<double>& y);
 
 };
-
 } // namespace CasADi
 
 #endif //SQP_INTERNAL_HPP
