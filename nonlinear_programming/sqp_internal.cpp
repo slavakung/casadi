@@ -41,12 +41,12 @@ namespace CasADi{
     addOption("qp_solver",         OT_QPSOLVER,   GenericType(),    "The QP solver to be used by the SQP method");
     addOption("qp_solver_options", OT_DICTIONARY, GenericType(),    "Options to be passed to the QP solver");
     addOption("hessian_approximation", OT_STRING, "exact",          "limited-memory|exact");
-    addOption("max_iter",           OT_INTEGER,      20,            "Maximum number of SQP iterations");
-    addOption("max_iter_ls",        OT_INTEGER,       10,            "Maximum number of linesearch iterations");
-    addOption("tol_pr",            OT_REAL,       1e-6,             "Stopping criterion for primal infeasibility");
-    addOption("tol_du",            OT_REAL,       1e-6,             "Stopping criterion for dual infeasability");
-    addOption("c1",                OT_REAL,       0.7,              "Armijo condition, coefficient of decrease in merit");
-    addOption("beta",              OT_REAL,       0.8,              "Line-search parameter, restoration factor of stepsize");
+    addOption("max_iter",           OT_INTEGER,      100,            "Maximum number of SQP iterations");
+    addOption("max_iter_ls",        OT_INTEGER,       20,            "Maximum number of linesearch iterations");
+    addOption("tol_pr",            OT_REAL,       1e-5,             "Stopping criterion for primal infeasibility");
+    addOption("tol_du",            OT_REAL,       1e-5,             "Stopping criterion for dual infeasability");
+    addOption("c1",                OT_REAL,       0.001,              "Armijo condition, coefficient of decrease in merit");
+    addOption("beta",              OT_REAL,       0.5,              "Line-search parameter, restoration factor of stepsize");
     addOption("merit_memory",      OT_INTEGER,      4,              "Size of memory to store history of merit function values");
     addOption("lbfgs_memory",      OT_INTEGER,     10,              "Size of L-BFGS memory.");
     addOption("regularize",        OT_BOOLEAN,  false,              "Automatic regularization of Lagrange Hessian.");
@@ -65,6 +65,13 @@ namespace CasADi{
     addOption("alphaMin",          OT_REAL,      1e-3,              "Used to check whether to increase rho.");
     addOption("sigmaMax",            OT_REAL,      1e+14,             "Maximum rho allowed.");
     addOption("muR0",              OT_REAL,      1e-4,              "Initial choice of regularization parameter");
+
+
+    addOption("TReta1",            OT_REAL,      0.8,               "Required predicted / actual decrease for TR increase");
+    addOption("TReta2",            OT_REAL,      0.2,               "Required predicted / actual decrease for TR decrease");
+    addOption("gamma1",            OT_REAL,      2.,                "Trust region increase parameter");
+    addOption("gamma2",            OT_REAL,      1.,                "Trust region update parameter");
+    addOption("gamma3",            OT_REAL,      1.,                "Trust region decrease parameter");
   }
 
 
@@ -96,7 +103,16 @@ namespace CasADi{
     sigmaMax_ = getOption("sigmaMax");    
     muR_ = getOption("muR0");
 
- 
+    TReta1_ = getOption("TReta1");
+    TReta2_ = getOption("TReta2");
+    gamma1_ = getOption("gamma1");
+    gamma2_ = getOption("gamma2");
+    gamma3_ = getOption("gamma3");
+
+      
+    ymax = 1e+10;
+
+    std::cout << "Nu: " << nu_ << std::endl; 
     // Get/generate required functions
     gradF();
     jacG();
@@ -116,9 +132,8 @@ namespace CasADi{
     CRSSparsity A_sparsity_qp = A_sparsity;
     
     if (stabilize_) { // Stabilized QP sparsity
-      int nI = A_sparsity.size1();
-      H_sparsity_qp = blkdiag(H_sparsity,sp_diag(nI));
-      A_sparsity_qp = horzcat(A_sparsity,sp_diag(nI));
+      H_sparsity_qp = blkdiag(H_sparsity,sp_diag(ng_));
+      A_sparsity_qp = horzcat(A_sparsity,sp_diag(ng_));
     }
     
     QPSolverCreator qp_solver_creator = getOption("qp_solver");
@@ -127,8 +142,11 @@ namespace CasADi{
     // Set options if provided
     if(hasSetOption("qp_solver_options")){
       Dictionary qp_solver_options = getOption("qp_solver_options");
+      
       qp_solver_.setOption(qp_solver_options);
-    }
+    } 
+
+    //qp_solver_.setOption("optimality",1e-2*tol_pr_);
     qp_solver_.init();
   
     // Lagrange multipliers of the NLP
@@ -169,15 +187,24 @@ namespace CasADi{
     // Bounds of the QP
     qp_LBA_.resize(ng_);
     qp_UBA_.resize(ng_);
+    if (stabilize_) {
     qp_LBX_.resize(nx_+ng_);
     qp_UBX_.resize(nx_+ng_);
     for (int i=0;i<ng_;++i) {
       qp_LBX_[i+nx_] = -numeric_limits<double>::infinity();
       qp_UBX_[i+nx_] = numeric_limits<double>::infinity();
+    } 
+    } else {
+    qp_LBX_.resize(nx_);
+    qp_UBX_.resize(nx_);     
     }
     // QP solution
     dx_.resize(nx_);
+    if (stabilize_)
     qp_DUAL_X_.resize(nx_+ng_);
+    else
+      qp_DUAL_X_.resize(nx_);
+
     qp_DUAL_A_.resize(ng_);
 
     ds_.resize(ng_);
@@ -268,19 +295,7 @@ namespace CasADi{
     //vector<double>& lbv, ubv;
 
     const vector<double>& lam_g0 = input(NLP_SOLVER_LAM_G0).data();
-    
-    vector<int> indicesn(nx_);
-    vector<int> indicesm(ng_);    
-    vector<int> emptyvec(0);
-    for (int i=0;i<nx_;++i)
-       indicesn[i] = i+nx_;
-    for (int i=0;i<ng_;++i)
-       indicesm[i] = i+ng_;
-
-    //set primal-dual bounds
-    //v.resize(nx_+ng_);
-    //v.resize(nx_+ng_);
-    //copy(lbx.begin(),lbx.end(),lbv.begin());
+   
     
 
     // Set linearization point to initial guess
@@ -337,29 +352,37 @@ namespace CasADi{
     sigma_ = 1.;
 
 
+      for (int i=0;i<ng_;++i)
+        s_[i] = std::max(lbg[i],std::min(gk_[i],ubg[i]));//std::min(gk_[i]+mu_e_[i]*muR_,ubg[i]));
+      for (int i=0;i<ng_;++i)
+        gsk_[i] = gk_[i]-s_[i];    
 
-
+      TRsuccess_ = 0;
+      TRDelta_ = std::max(norm_inf(s_),std::max(norm_inf(x_),std::max(norm_inf(gf_),1.)));
+//std::max(std::max(norm_inf(gf_),std::max(norm_inf(x_),std::max(norm_inf(s_),1.))));
+      rhoap_ = 0;
+      rhoap_mu_ = 0;
 
 
 
     // MAIN OPTIMIZATION LOOP
     while(true){
-    
       // Primal infeasability
       double pr_inf = primalInfeasibility(x_, lbx, ubx, gk_, lbg, ubg);
-    
+
       // 1-norm of lagrange gradient
       double gLag_norm1 = norm_1(gLag_);
-    
+      
+      char info = ' ';
+
+      double gLag_norminf = norm_inf(gLag_);
+      
       // 1-norm of step
       double dx_norm1 = norm_1(dx_);
     
       // Print header occasionally
       if(iter % 10 == 0) printIteration(cout);
-    
-      // Printing information about the actual iterate
-      printIteration(cout,iter,fk_,pr_inf,gLag_norm1,dx_norm1,reg_,ls_iter,ls_success);
-    
+ 
       // Call callback function if present
       if (!callback_.isNull()) {
         if (!callback_.input(NLP_SOLVER_F).empty()) callback_.input(NLP_SOLVER_F).set(fk_);
@@ -379,12 +402,6 @@ namespace CasADi{
      // Default stepsize
       double t = 0;
 
-      for (int i=0;i<ng_;++i)
-        s_[i] = std::min(gk_[i]+mu_e_[i]*muR_,ubg[i]);
-      for (int i=0;i<ng_;++i)
-        s_[i] = std::max(s_[i],lbg[i]);
-      for (int i=0;i<ng_;++i)
-        gsk_[i] = gk_[i]-s_[i];    
   
 
       normc_ = norm_2(gk_);
@@ -393,23 +410,56 @@ namespace CasADi{
       scaleg_ = 1+normc_*normJ_;
       scaleglag_ = std::max(1., std::max(normgf_,(std::max(1.,norm_2(mu_)) * normJ_)));
 
-      
-
+ 
       // Checking convergence criteria
-      if (pr_inf/scaleg_ < tol_pr_ && gLag_norm1/scaleglag_ < tol_du_){
+      if (pr_inf/scaleglag_ < tol_pr_ && gLag_norminf/scaleglag_ < tol_du_){
+        printIteration(cout,iter,fk_,pr_inf,gLag_norminf,dx_norm1,reg_,TRDelta_,ls_iter,ls_success, ' ');
         cout << endl;
         cout << "CasADi::SQPMethod: Convergence achieved after " << iter << " iterations." << endl;
         break;
       }
 
       if (iter==0) {
-	phiMaxO_ = std::max(gLag_norm1+pr_inf+10.,1000.);
+	phiMaxO_ = std::max(gLag_norminf+pr_inf+10.,1000.);
         phiMaxV_ = phiMaxO_;
         transform(mu_.begin(),mu_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
         for (int i=0;i<ng_;++i)
-	  dualpen_[i] = dualpen_[i]*(1/sigma_);
+	  dualpen_[i] = -dualpen_[i]*(1/sigma_);
         transform(gsk_.begin(),gsk_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
-        Merit_ = fk_+inner_prod(mu_e_,gk_)+.5*sigma_*(normcs_*normcs_+nu_*norm_2(dualpen_));
+        Merit_ = fk_+inner_prod(mu_e_,gsk_)+.5*sigma_*(normcs_*normcs_+nu_*std::pow(norm_2(dualpen_),2));
+
+      } else { //do updates
+        pr_inf = pr_inf / scaleglag_;
+        gLag_norminf = gLag_norminf/scaleglag_;
+        phiV_ = gLag_norminf+phiWeight_*pr_inf;
+        phiO_ = phiWeight_*gLag_norminf+pr_inf;
+
+        if (phiV_ <= 0.9*phiMaxV_) {
+	    phiMaxV_ = std::min(0.9*phiMaxV_,0.75*phiV_+.25*phiMaxV_);
+            info = 'O';
+            copy(mu_.begin(),mu_.end(),mu_e_.begin());
+            TRDelta_ = std::max(norm_inf(dx_)*3.,TRDelta_);
+	} else if (phiO_<=0.9*phiMaxO_) {
+	    phiMaxO_ = std::min(0.9*phiMaxO_,0.75*phiO_+.25*phiMaxO_);
+            info = 'V';
+            copy(mu_.begin(),mu_.end(),mu_e_.begin());
+            TRDelta_ = std::max(norm_inf(dx_)*3.,TRDelta_);
+	} else {
+	  transform(mu_x_.begin(),mu_x_.end(),gradm_.begin(),gradm_.begin(),plus<double>());
+          
+          double Mopt = std::max(norm_inf(gradm_),norm_inf(gradms_));
+          
+          if (Mopt<=tau_) {              
+	    for (int i=0;i<ng_;++i)
+	      mu_e_[i] = std::max(-ymax,std::min(ymax,mu_[i]));
+            info = 'M';
+            tau_ = tau_/2;
+            muR_ = std::min(muR_/2,std::pow(std::max(pr_inf,gLag_norminf),0.8));
+	  } else {
+            info = 'F';
+	  }
+	}
+        muR_ = std::min(muR_,std::pow(std::max(pr_inf,gLag_norminf),0.8));
 
       }
 
@@ -418,6 +468,14 @@ namespace CasADi{
         cout << "CasADi::SQPMethod: Maximum number of iterations reached." << endl;
         break;
       }
+    
+      // Printing information about the actual iterate
+      printIteration(cout,iter,fk_,pr_inf,gLag_norminf,dx_norm1,reg_,TRDelta_,ls_iter,ls_success, info);
+   
+      
+      
+
+
     
       // Start a new iteration
       iter++;
@@ -429,6 +487,12 @@ namespace CasADi{
       transform(lbg.begin(),lbg.end(),gk_.begin(),qp_LBA_.begin(),minus<double>());
       transform(ubg.begin(),ubg.end(),gk_.begin(),qp_UBA_.begin(),minus<double>());
 
+      for (int i=0;i<nx_;++i) {
+	qp_LBX_[i] = std::max(qp_LBX_[i],-TRDelta_);
+        qp_UBX_[i] = std::min(qp_UBX_[i],TRDelta_);
+      }
+
+
       // Solve the QP
       solve_QP(Bk_,gf_,qp_LBX_,qp_UBX_,Jk_,qp_LBA_,qp_UBA_,dx_,qp_DUAL_X_,qp_DUAL_A_,muR_,mu_,mu_e_);
 
@@ -439,26 +503,30 @@ namespace CasADi{
          dy_[i] = dv_[i+nx_];
          
       **/
+      for (int i=0;i<ng_;++i)
+        dy_[i] = qp_DUAL_A_[i]-mu_[i];
 
       log("QP solved");
 
 
-
-      
-
+ 
       // Detecting indefiniteness
       double gain = quad_form(dx_,Bk_);
-      if (gain < 0){
-        casadi_warning("Indefinite Hessian detected...");
-      }
+      //if (gain < 0){
+      //  casadi_warning("Indefinite Hessian detected...");
+      //}
 
       mat_vec(dx_,Jk_,ds_);
-      transform(ds_.begin(),ds_.end(),gsk_.begin(),ds_.begin(),plus<double>());      
-
+      for (int i=0;i<ng_;++i) {
+	ds_[i] = ds_[i]+gsk_[i]-muR_*(qp_DUAL_A_[i]-mu_e_[i]);
+      }
+      //transform(ds_.begin(),ds_.end(),gsk_.begin(),ds_.begin(),plus<double>());      
+      
 
       double muhat;
       //make sure, if nu=0 (so using classical augLag) that muR is small enough
       if (nu_==0) {
+	std::cout << "??" << nu_ << std::endl;
         mat_vectran(mu_e_,Jk_,xtmp_);
         transform(xtmp_.begin(),xtmp_.end(),gk_.begin(),xtmp_.begin(),plus<double>());
         muhat = inner_prod(xtmp_,dx_)-inner_prod(mu_e_,ds_)+.5*gain;
@@ -474,42 +542,106 @@ namespace CasADi{
       meritfg();         
 
  
-      //EDIT: now calculate grads and inner product with both
+      //now calculate grads and inner product with both
       double rhsmerit = 0;
       for (int i=0;i<nx_;++i)
            rhsmerit = rhsmerit+ dx_[i]*gradm_[i];
       
       for (int i=0;i<ng_;++i)
-	rhsmerit = rhsmerit+(dy_[i])*gradm_[i+ng_]+ds_[i]*gradms_[i];
+	rhsmerit = rhsmerit+(dy_[i])*gradm_[i+nx_]+ds_[i]*gradms_[i];
       
-      if (nu_= 0 && rhsmerit > 0) {
+      if (nu_== 0 && rhsmerit > 0) {
 	for (int i=0;i<ng_;++i) 
 	  rhsmerit = rhsmerit+gsk_[i]*(dy_[i]);
       }
 
-
-      // Calculate L1-merit function in the actual iterate
-      //      double l1_infeas = primalInfeasibility(x_, lbx, ubx, gk_, lbg, ubg);
-
-      // Right-hand side of Armijo condition
-      //double F_sens = inner_prod(dx_, gf_);    
-      //double L1dir = F_sens - sigma_ * l1_infeas;
-      //double L1merit = fk_ + sigma_ * l1_infeas;
-
-      // Storing the actual merit function value in a list
-      //merit_mem_.push_back(L1merit);
-      //if (merit_mem_.size() > merit_memsize_){
-      //  merit_mem_.pop_front();
-      //}
-      // Stepsize
-      t = 1.0;
-      //double fk_cand;
-      // Merit function value in candidate
-      double merit_cand = 0;
-
       // Reset line-search counter, success marker
       ls_iter = 0;
       ls_success = true;
+
+      // Calculate candidate Merit function
+      t = std::min(1.0,dvMax_/std::max(norm_inf(dx_),norm_inf(dy_)));
+     
+      double dvHMdv = gain;
+      
+      mat_vec(dx_,Jk_,pi_);
+      dvHMdv += (1+nu_)/muR_*std::pow(norm_2(pi_),2);
+      dvHMdv -= 2*(1+nu_)/muR_*inner_prod(pi_,ds_);
+      dvHMdv -= 2*nu_*inner_prod(pi_,dy_);
+      dvHMdv += (1+nu_)/muR_*std::pow(norm_2(ds_),2);
+      dvHMdv+=2*nu_*inner_prod(ds_,dy_);
+      dvHMdv -= nu_*muR_*std::pow(norm_2(dy_),2);
+
+      
+          for(int i=0; i<nx_; ++i) {
+            x_cand_[i] = x_[i] + t * dx_[i];
+
+	  }
+          // Evaluating objective and constraints
+          eval_f(x_cand_,fk_cand_);
+          eval_g(x_cand_,gk_cand_);
+         
+          for(int i=0;i<ng_;++i) {
+            mu_cand_[i] = mu_[i]+t*(dy_[i]);
+            s_cand_[i] = s_[i]+t*ds_[i];//std::min(ubg[i],std::max(lbg[i],gk_cand_[i]));//
+	    gsk_cand_[i] = gk_cand_[i]-s_cand_[i];
+	  }
+         
+
+ 
+          // Calculating merit-function in candidate
+
+          normc_cand_ = norm_2(gk_cand_);
+          normcs_cand_ = norm_2(gsk_cand_);
+
+          transform(mu_cand_.begin(),mu_cand_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
+          for (int i=0;i<ng_;++i) 
+       	    dualpen_[i] = -dualpen_[i]*(1/sigma_);
+          transform(gsk_cand_.begin(),gsk_cand_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
+          Merit_cand_ = fk_cand_+inner_prod(mu_e_,gsk_cand_)+.5*sigma_*(normcs_cand_*normcs_cand_+nu_*std::pow(norm_2(dualpen_),2));
+
+
+            transform(mu_.begin(),mu_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
+            for (int i=0;i<ng_;++i) 
+       	      dualpen_[i] = -dualpen_[i]*(muR_);
+            transform(gsk_.begin(),gsk_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
+            Merit_mu_ = fk_+inner_prod(mu_e_,gsk_)+.5*(1/muR_)*(normcs_*normcs_+nu_*std::pow(norm_2(dualpen_),2));
+
+          transform(mu_cand_.begin(),mu_cand_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
+          for (int i=0;i<ng_;++i) 
+       	    dualpen_[i] = -dualpen_[i]*(muR_);
+          transform(gsk_cand_.begin(),gsk_cand_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
+          Merit_mu_cand_ = fk_cand_+inner_prod(mu_e_,gsk_cand_)+.5*(1/muR_)*(normcs_cand_*normcs_cand_+nu_*std::pow(norm_2(dualpen_),2));
+        
+
+	  if (Merit_cand_ - Merit_ > 0) {
+	    rhoap_ = 0;
+	  } else {
+            rhoap_ = (Merit_cand_-Merit_) / (rhsmerit+0.5*dvHMdv);
+	  }
+
+          if (Merit_mu_cand_ - Merit_mu_ > 0)
+            rhoap_mu_ = 0;
+          else
+            rhoap_mu_ = (Merit_mu_cand_ - Merit_mu_) / (rhsmerit+0.5*dvHMdv);
+
+
+	  if ((rhoap_ > TReta2_) || (rhoap_mu_ > TReta2_)) {
+	    if((rhoap_ > TReta1_ || rhoap_mu_ > TReta1_) && (std::max(norm_inf(dx_),norm_inf(ds_))>0.01*TRDelta_)) {
+		TRsuccess_++;
+                TRDelta_ = std::sqrt(std::pow(TRDelta_*std::pow(gamma1_,TRsuccess_),2)+std::pow(std::max(norm_inf(dx_),norm_inf(ds_))*std::pow(gamma1_,TRsuccess_),2));
+	      }
+	      else if (rhoap_ < TReta1_ && rhoap_mu_ <TReta1_) {
+		TRsuccess_ = 0;
+                TRDelta_ = TRDelta_*gamma2_;
+	      }
+	 
+	      } //else if(rhsmerit >=0)
+	    //  TRDelta_ = 0.1*TRDelta_;
+	      else {
+
+
+
 
       // Line-search
       log("Starting line-search");
@@ -518,35 +650,8 @@ namespace CasADi{
       
         // Line-search loop
         while (true){
-          for(int i=0; i<nx_; ++i) {
-            x_cand_[i] = x_[i] + t * dx_[i];
-            mu_cand_[i] = mu_[i]+t*(dy_[i]);
-            s_cand_[i] = s_[i]+t*ds_[i];
-	  }
-          // Evaluating objective and constraints
-          eval_f(x_cand_,fk_cand_);
-          eval_g(x_cand_,gk_cand_);
-         
-          for(int i=0;i<ng_;++i) {
-	    gsk_cand_[i] = gk_cand_[i]-s_cand_[i];
-	  }
-         
 
           ls_iter++;
-
-          // Calculating merit-function in candidate
-
-          normc_cand_ = norm_2(gk_cand_);
-          normcs_cand_ = norm_2(gsk_cand_);
-
-          transform(mu_cand_.begin(),mu_cand_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
-          for (int i=0;i<ng_;++i) 
-       	    dualpen_[i] = dualpen_[i]*(1/sigma_);
-          transform(gsk_cand_.begin(),gsk_cand_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
-          Merit_cand_ = fk_cand_+inner_prod(mu_e_,gk_cand_)+.5*sigma_*(normcs_cand_*normcs_cand_+nu_*norm_2(dualpen_));
-
-
-        
           // Calculating maximal merit function value so far          
           if (Merit_cand_ <= Merit_ + c1_*t * rhsmerit){
             // Accepting candidate
@@ -554,21 +659,10 @@ namespace CasADi{
             break;
           }
 
-     
+         
           // Line-search not successful, but we accept it.
           //do mu merit comparison as per flexible penalty
-          if(ls_iter == 1) {
-            transform(mu_.begin(),mu_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
-            for (int i=0;i<ng_;++i) 
-       	      dualpen_[i] = dualpen_[i]*(muR_);
-            transform(gsk_.begin(),gsk_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
-            Merit_mu_ = fk_+inner_prod(mu_e_,gk_)+.5*(1/muR_)*(normcs_*normcs_+nu_*norm_2(dualpen_));
-	  }
-          transform(mu_cand_.begin(),mu_cand_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
-          for (int i=0;i<ng_;++i) 
-       	    dualpen_[i] = dualpen_[i]*(muR_);
-          transform(gsk_cand_.begin(),gsk_cand_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
-          Merit_mu_cand_ = fk_cand_+inner_prod(mu_e_,gk_cand_)+.5*(1/muR_)*(normcs_cand_*normcs_cand_+nu_*norm_2(dualpen_));
+
           if (Merit_mu_cand_ <= Merit_mu_+c1_*t*rhsmerit) {
 	    sigma_ = std::min(std::min(2*sigma_,1/muR_),sigmaMax_);
             break;
@@ -582,13 +676,55 @@ namespace CasADi{
       
           // Backtracking
           t = beta_ * t;
-        }
-      }
 
+          for(int i=0; i<nx_; ++i) {
+            x_cand_[i] = x_[i] + t * dx_[i];
+
+	  }
+          // Evaluating objective and constraints
+          eval_f(x_cand_,fk_cand_);
+          eval_g(x_cand_,gk_cand_);
+         
+          for(int i=0;i<ng_;++i) {
+            mu_cand_[i] = mu_[i]+t*(dy_[i]);
+            s_cand_[i] = s_[i]+t*ds_[i];//std::min(ubg[i],std::max(lbg[i],gk_cand_[i]));//
+	    gsk_cand_[i] = gk_cand_[i]-s_cand_[i];
+	  }
+         
+
+
+
+          // Calculating merit-function in candidate
+
+          normc_cand_ = norm_2(gk_cand_);
+          normcs_cand_ = norm_2(gsk_cand_);
+
+          transform(mu_cand_.begin(),mu_cand_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
+          for (int i=0;i<ng_;++i) 
+       	    dualpen_[i] = -dualpen_[i]*(1/sigma_);
+          transform(gsk_cand_.begin(),gsk_cand_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
+          Merit_cand_ = fk_cand_+inner_prod(mu_e_,gsk_cand_)+.5*sigma_*(normcs_cand_*normcs_cand_+nu_*std::pow(norm_2(dualpen_),2));
+          
+          transform(mu_cand_.begin(),mu_cand_.end(),mu_e_.begin(),dualpen_.begin(),minus<double>());
+          for (int i=0;i<ng_;++i) 
+       	    dualpen_[i] = -dualpen_[i]*(muR_);
+          transform(gsk_cand_.begin(),gsk_cand_.end(),dualpen_.begin(),dualpen_.begin(),plus<double>());
+          Merit_mu_cand_ = fk_cand_+inner_prod(mu_e_,gsk_cand_)+.5*(1/muR_)*(normcs_cand_*normcs_cand_+nu_*std::pow(norm_2(dualpen_),2));
+        
+        }
+        if (ls_success) {
+          TRDelta_=gamma3_*t*std::max(norm_inf(dx_),norm_inf(ds_));
+
+	} else
+          TRDelta_ = TRDelta_/25.;
+      } else {
+        TRDelta_ = TRDelta_ / 10;
+      }
+	      }
       // Candidate accepted, update dual variables
       for(int i=0; i<ng_; ++i) mu_[i] = t * dy_[i] + mu_[i];
       for(int i=0; i<nx_; ++i) mu_x_[i] = t * qp_DUAL_X_[i] + (1 - t) * mu_x_[i];
-    
+      for (int i=0;i<ng_;++i) s_[i] = t*ds_[i]+s_[i];
       if(!exact_hessian_){
         // Evaluate the gradient of the Lagrangian with the old x but new mu (for BFGS)
         copy(gf_.begin(),gf_.end(),gLag_old_.begin());
@@ -602,8 +738,8 @@ namespace CasADi{
       copy(x_cand_.begin(),x_cand_.end(),x_.begin());
       Merit_ = Merit_cand_;
       
-      // Change this later
-      copy(mu_.begin(),mu_.end(),mu_e_.begin());
+
+
 
       // Evaluate the constraint Jacobian
       log("Evaluating jac_g");
@@ -657,8 +793,9 @@ namespace CasADi{
       gsk_[i] = gk_[i]-s_[i];    
 
 
-    normc_ = norm_2(gk_);
-    normcs_ = norm_2(gsk_);
+    //normc_ = norm_2(gk_);
+    //normcs_ = norm_2(gsk_);
+   dvMax_ = std::max(std::min(std::pow(beta_,(ls_iter-1))*dvMax_,100.),1e-8);
      
     }
   
@@ -679,20 +816,23 @@ namespace CasADi{
     stream << setw(9) << "inf_pr";
     stream << setw(9) << "inf_du";
     stream << setw(9) << "||d||";
+    stream << setw(9) << "TRDelta";
     stream << setw(7) << "lg(rg)";
     stream << setw(3) << "ls";
-    stream << ' ';
+    stream << setw(2) << "info";
+    //stream << ' ';
     stream << endl;
   }
   
   void SQPInternal::printIteration(std::ostream &stream, int iter, double obj, double pr_inf, double du_inf, 
-                                   double dx_norm, double rg, int ls_trials, bool ls_success){
+                                   double dx_norm, double rg, double TRdelta, int ls_trials, bool ls_success, char info){
     stream << setw(4) << iter;
     stream << scientific;
     stream << setw(14) << setprecision(6) << obj;
     stream << setw(9) << setprecision(2) << pr_inf;
     stream << setw(9) << setprecision(2) << du_inf;
     stream << setw(9) << setprecision(2) << dx_norm;
+    stream << setw(9) << setprecision(2) << TRdelta;
     stream << fixed;
     if(rg>0){
       stream << setw(7) << setprecision(2) << log10(rg);
@@ -701,6 +841,7 @@ namespace CasADi{
     }
     stream << setw(3) << ls_trials;
     stream << (ls_success ? ' ' : 'F');
+    stream << setw(3)<< info;
     stream << endl;
   }
 
@@ -936,17 +1077,18 @@ namespace CasADi{
                              std::vector<double>& x_opt, std::vector<double>& lambda_x_opt, std::vector<double>& lambda_A_opt,
                              double muR, const std::vector<double> & mu, const std::vector<double> & muE){
 
-      cout << "H = " << endl;
-      H.printDense();
-      cout << "A = " << endl;
-      A.printDense();
-      cout << "g = " << g << endl;
-      cout << "lbx = " << lbx << endl;
-      cout << "ubx = " << ubx << endl;
-      cout << "lbA = " << lbA << endl;
-      cout << "ubA = " << ubA << endl;
+    //cout << "H = " << endl;
+    //H.printDense();
+    //cout << "A = " << endl;
+    //A.printDense();
+    //cout << "g = " << g << endl;
+    //cout << "lbx = " << lbx << endl;
+    //cout << "ubx = " << ubx << endl;
+    //cout << "lbA = " << lbA << endl;
+    //cout << "ubA = " << ubA << endl;
     //}
-    
+    v_.resize(nx_+ng_);
+
     
     // Hessian
     if (stabilize_) {
@@ -957,13 +1099,13 @@ namespace CasADi{
     } else {
       qp_solver_.setInput(H, QP_SOLVER_H);
     }
-    std::cout << "orig H";
-    H.printDense();
-    std::cout << std::endl;
+    //std::cout << "orig H";
+    //H.printDense();
+    //std::cout << std::endl;
     
-    std::cout << "new :";
-    qp_solver_.input(QP_SOLVER_H).printDense();
-    std::cout << std::endl;
+    //std::cout << "new :";
+    //qp_solver_.input(QP_SOLVER_H).printDense();
+    //std::cout << std::endl;
 
     // Pass linear bounds
     if (ng_>0) {
@@ -978,8 +1120,9 @@ namespace CasADi{
           int row_end = A_rowind[i+1];
           // Copy row contents
           std::copy(A.begin()+row_start,A.begin()+row_end,A_qp.begin()+row_start+i);
-          A_qp[row_end+i] = muR;
+          A_qp[row_end+i] = -muR;
         }
+        
         // Add constant to linear inequality 
         for (int i=0;i<mu.size();++i) {
           double extra = muR*(mu[i]-muE[i]);
@@ -991,33 +1134,35 @@ namespace CasADi{
       }
 
     }
+    qp_solver_.setInput(lbx,QP_SOLVER_LBX);
+    qp_solver_.setInput(ubx,QP_SOLVER_UBX);
+ 
+    //std::cout << "orig A";
+    //A.printDense();
+    //std::cout << std::endl;
     
-    std::cout << "orig A";
-    A.printDense();
-    std::cout << std::endl;
-    
-    std::cout << "new :";
-    qp_solver_.input(QP_SOLVER_A).printDense();
-    std::cout << std::endl;
+    //std::cout << "new :";
+    //qp_solver_.input(QP_SOLVER_A).printDense();
+    //std::cout << std::endl;
     
     // g
     if (stabilize_) {
       std::copy(g.begin(),g.end(),qp_solver_.input(QP_SOLVER_G).begin());
-      for (int i=0;i<mu.size();++i) {
+      for (int i=0;i<ng_;++i) {
         qp_solver_.input(QP_SOLVER_G).at(g.size()+i) = muR * mu[i];
       }
     } else {
       qp_solver_.setInput(g,QP_SOLVER_G);
     }
 
-    std::cout << "orig g" << g <<  std::endl;
-    std::cout << "new :" << qp_solver_.input(QP_SOLVER_G) << std::endl;
+    //std::cout << "orig g" << g <<  std::endl;
+    //std::cout << "new :" << qp_solver_.input(QP_SOLVER_G) << std::endl;
 
-    std::cout << "orig lbA" << lbA <<  std::endl;
-    std::cout << "new :" << qp_solver_.input(QP_SOLVER_LBA) << std::endl;
+    //std::cout << "orig lbA" << lbA <<  std::endl;
+    //std::cout << "new :" << qp_solver_.input(QP_SOLVER_LBA) << std::endl;
     
-    std::cout << "orig ubA" << ubA <<  std::endl;
-    std::cout << "new :" << qp_solver_.input(QP_SOLVER_UBA) << std::endl;
+    //std::cout << "orig ubA" << ubA <<  std::endl;
+    //std::cout << "new :" << qp_solver_.input(QP_SOLVER_UBA) << std::endl;
 
     // Hot-starting if possible
     std::copy(x_opt.begin(),x_opt.end(),qp_solver_.input(QP_SOLVER_X0).begin());
@@ -1036,32 +1181,41 @@ namespace CasADi{
 
     // Solve the QP
     qp_solver_.evaluate();
+
   
     // Get the optimal solution
+
+ 
     std::copy(qp_solver_.output(QP_SOLVER_X).begin(),qp_solver_.output(QP_SOLVER_X).begin()+nx_,x_opt.begin());
     std::copy(qp_solver_.output(QP_SOLVER_LAM_X).begin(),qp_solver_.output(QP_SOLVER_LAM_X).begin()+nx_,lambda_x_opt.begin());
     std::copy(qp_solver_.output(QP_SOLVER_LAM_A).begin(),qp_solver_.output(QP_SOLVER_LAM_A).begin()+ng_,lambda_A_opt.begin());
     
-    if (monitored("dx")){
-      cout << "dx = " << x_opt << endl;
-    }
+ 
+    //if (monitored("dx")){
+    //cout << "dx = " << x_opt << endl;
+      //}
+      //cout << "mul = " << lambda_A_opt<<endl;
   }
   
   double SQPInternal::primalInfeasibility(const std::vector<double>& x, const std::vector<double>& lbx, const std::vector<double>& ubx,
                                           const std::vector<double>& g, const std::vector<double>& lbg, const std::vector<double>& ubg){
-    // L1-norm of the primal infeasibility
+    // Linf-norm of the primal infeasibility
     double pr_inf = 0;
   
     // Bound constraints
     for(int j=0; j<x.size(); ++j){
-      pr_inf += max(0., lbx[j] - x[j]);
-      pr_inf += max(0., x[j] - ubx[j]);
+      //pr_inf += max(0., lbx[j] - x[j]);
+      pr_inf = max(pr_inf,max(0.,lbx[j]-x[j]));
+      //pr_inf += max(0., x[j] - ubx[j]);
+      pr_inf = max(pr_inf,max(0., x[j] - ubx[j]));
     }
   
     // Nonlinear constraints
     for(int j=0; j<g.size(); ++j){
-      pr_inf += max(0., lbg[j] - g[j]);
-      pr_inf += max(0., g[j] - ubg[j]);
+      //pr_inf += max(0., lbg[j] - g[j]);     
+      //pr_inf += max(0., g[j] - ubg[j]);
+      pr_inf = max(pr_inf,max(0., lbg[j] - g[j]));     
+      pr_inf = max(pr_inf,max(0., g[j] - ubg[j]));
     }
   
     return pr_inf;
@@ -1115,7 +1269,7 @@ namespace CasADi{
     // Loop over the rows of A
     for(int i=0; i<A.size1(); ++i){
       // Loop over the nonzeros of A
-      for(int el=A_rowind[i]; el<A_rowind[i+1]; ++el){
+      for(int el=A_rowind[i]; el<A_rowind[i+1]; el++){
         // Get column
         int j = A_col[el];
       
@@ -1123,6 +1277,7 @@ namespace CasADi{
         y[j] += A_data[el]*x[i];
       }
     }
+
   }
 
   void SQPInternal::mat_vec(const std::vector<double>& x, const DMatrix& A, std::vector<double>& y){
@@ -1140,7 +1295,7 @@ namespace CasADi{
     // Loop over the rows of A
     for(int i=0; i<A.size1(); ++i){
       // Loop over the nonzeros of A
-      for(int el=A_rowind[i]; el<A_rowind[i+1]; ++el){
+      for(int el=A_rowind[i]; el<A_rowind[i+1]; el++){
         // Get column
         int j = A_col[el];
       
@@ -1148,26 +1303,27 @@ namespace CasADi{
         y[i] += A_data[el]*x[j];
       }
     }
+
   }
 
   void SQPInternal::meritfg() {
-    for (int i=0;i<ng_;++i)
-      pi_[i] = 1/muR_*gsk_[i];
-    transform(mu_e_.begin(),mu_e_.end(),pi_.begin(),pi_.begin(),plus<double>());
-    transform(pi_.begin(),pi_.end(),mu_.begin(),pi_.begin(),minus<double>());
-    for (int i=0;i<ng_;++i) { 
-      pi_[i] = nu_*pi_[i];
-      pi2_[i] = gsk_[i]/muR_;
+    for (int i=0;i<ng_;++i) {
+      pi_[i] = (1+nu_)/muR_*gsk_[i]+(1+nu_)*mu_e_[i]-nu_*mu_[i];
     }
-    transform(pi_.begin(),pi_.end(),mu_e_.begin(),pi_.begin(),plus<double>());
-    transform(pi_.begin(),pi_.end(),pi2_.begin(),pi_.begin(),plus<double>());
+    //transform(mu_e_.begin(),mu_e_.end(),pi_.begin(),pi_.begin(),plus<double>());
+    //transform(pi_.begin(),pi_.end(),mu_.begin(),pi_.begin(),plus<double>());
+    //for (int i=0;i<ng_;++i) { 
+    //  pi_[i] = nu_*pi_[i];
+    //  pi2_[i] = gsk_[i]/muR_+(1-nu_)*mu_e_[i];
+    //}
+    //transform(pi_.begin(),pi_.end(),mu_e_.begin(),pi_.begin(),plus<double>());
+    //transform(pi_.begin(),pi_.end(),pi2_.begin(),pi_.begin(),plus<double>());
     copy(gf_.begin(),gf_.end(),gradm_.begin());
     mat_vectran(pi_,Jk_,xtmp_);
     transform(xtmp_.begin(),xtmp_.end(),gradm_.begin(),gradm_.begin(),plus<double>());
     for (int i=0;i<ng_;++i) { 
-      gradm_[nx_+i] = nu_*(gsk_[i]+muR_*(mu_[i]-mu_e_[i]));
-      gradms_[i] = -(mu_e_[i]+(1+nu_)*gsk_[i]/muR_+nu_*(mu_[i]-mu_e_[i]));
-
+      gradm_[nx_+i] = nu_*(gsk_[i]-muR_*(mu_[i]-mu_e_[i]));
+      gradms_[i] = -(mu_e_[i]+(1+nu_)*gsk_[i]/muR_-nu_*(mu_[i]-mu_e_[i]));
     }
 
     

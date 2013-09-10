@@ -62,13 +62,18 @@ public:
   double muLS;
   double Merit_,Merit_cand_, Merit_mu_,Merit_mu_cand_;
   
+  // Trust Region parameters
+  double TRDelta_, TReta1_, TReta2_, gamma1_, gamma2_, gamma3_;
+  double rhoap_, rhoap_mu_;
+  int TRsuccess_; 
+
 
   // Optimality measure and adjustment parameters
   double tau_;
   double phiWeight_;
   double yMax_;
   double phiComb_;
-  double phiMaxO_, phiMaxV_;
+  double phiMaxO_, phiMaxV_, phiV_,phiO_;
   
   
 
@@ -94,6 +99,7 @@ public:
   
   /// Lagrange multipliers of the NLP
   std::vector<double> mu_, mu_x_, mu_e_, pi_, pi2_;
+  double ymax; 
 
   /// gradient of the merit function
   std::vector<double> gradm_, gradms_;
@@ -147,7 +153,7 @@ public:
   
   /// Print iteration
   void printIteration(std::ostream &stream, int iter, double obj, double pr_inf, double du_inf, 
-                      double dx_norm, double reg, int ls_trials, bool ls_success);
+                      double dx_norm, double reg, double TRdelta, int ls_trials, bool ls_success, char info);
 
   // Reset the Hessian or Hessian approximation
   void reset_h();

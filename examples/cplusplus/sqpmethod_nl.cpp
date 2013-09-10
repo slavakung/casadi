@@ -56,8 +56,8 @@ int main(int argc, char **argv){
   // nlp_solver.setOption("max_iter",10);
   // nlp_solver.setOption("verbose",true);
   // nlp_solver.setOption("linear_solver","ma57");
-  // nlp_solver.setOption("hessian_approximation","exact");
-  nlp_solver.setOption("hessian_approximation","bfgs");
+   nlp_solver.setOption("hessian_approximation","exact");
+  // nlp_solver.setOption("hessian_approximation","bfgs");
   // nlp_solver.setOption("derivative_test","second-order");
 
   // Specify QP solver
@@ -67,6 +67,11 @@ int main(int argc, char **argv){
   Dictionary nlp_solver_options;
   nlp_solver_options["print_level"] = 0;
   nlp_solver_options["print_time"] = 0;
+  nlp_solver_options["tol"] = 1e-16;
+  nlp_solver_options["constr_viol_tol"] = 1e-16;
+  nlp_solver_options["dual_inf_tol"] = 1e-16;
+  nlp_solver_options["compl_inf_tol"] = 1e-16;
+
   qp_solver_options["nlp_solver_options"] = nlp_solver_options;
   nlp_solver.setOption("qp_solver_options",qp_solver_options);
  
