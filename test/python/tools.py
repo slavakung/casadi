@@ -949,6 +949,55 @@ class Toolstests(casadiTestCase):
     b["P",0,:] = sparse(DMatrix([11,12,0])).T
     self.checkarray(b["P"],DMatrix([[11,12,0],[12,4,5],[0,5,8]]))
     
+  def test_callableExtraIndex(self):
+    a = struct_ssym([entry("a",shape=(5,3)),entry("b",shape=(4,3))])
+    b = a()
+    
+    b["a",flatten] = range(15)
+    self.checkarray(b.cat,DMatrix(range(15)+[0]*12))
+    
+    self.checkarray(b["a",flatten],DMatrix(range(15)))
+    
+    b["a",vec] = range(15)
+
+    self.checkarray(b["a",vec],DMatrix(range(15)))
+    
+  def test_pickling(self):
+    import pickle
+
+    x = struct([entry("a",shape=(2,3)),entry("b",shape=(2,3))])
+
+    s = pickle.dumps(x)
+
+    w = pickle.loads(s)
+
+    self.assertEqual(x.size,w.size)
+    x = struct([entry("a",shape=(2,3)),entry("b",shape=(2,3))])
+
+    y = x()
+
+    y["b",:,2] = 12
+
+    s = pickle.dumps(y)
+    w = pickle.loads(s)
+
+    self.checkarray(w["b",:,2],DMatrix([12,12]))
+    
+  def test_numpyint(self):
+    state = struct_ssym(['x', 'y'])
+    x = struct_ssym([entry('states', struct=state, repeat=10)])
+    x_init = x()
+    x_init['states', 0, 'x'] # OK
+    a = [1,2,3]
+    x_init['states', int32(0), 'x'] 
+    x_init['states', int64(0), 'x']
+    
+  def test_numpyint(self):
+    s = struct_ssym(map(entry, 'xyz')) # OK 
+    print s['x']
+    s = struct_ssym(map(entry, u'xyz')) # IndexError: list index out of range
+    print s[u'x']
+    
 if __name__ == '__main__':
     unittest.main()
 

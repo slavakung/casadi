@@ -691,6 +691,8 @@ Matrix<T>::Matrix(const std::vector< std::vector<T> >& d){
       );
     }
   }
+  if (m==-1) m=1;
+  
   sparsity_ = CRSSparsity(n,m,true);
   
   data().resize(n*m);
@@ -1222,12 +1224,12 @@ void Matrix<T>::sanityCheck(bool complete) const {
 }
 
 template<class T>
-Matrix<T> Matrix<T>::mul(const Matrix<T> &y) const {
-  return this->mul_smart(y);
+Matrix<T> Matrix<T>::mul(const Matrix<T> &y, const CRSSparsity& sp_z) const {
+  return this->mul_smart(y, sp_z);
 }
 
 template<class T>
-Matrix<T> Matrix<T>::mul_full(const Matrix<T> &y) const{
+Matrix<T> Matrix<T>::mul_full(const Matrix<T> &y, const CRSSparsity& sp_z) const{
   // First factor
   const Matrix<T>& x = *this;
   
@@ -1238,12 +1240,16 @@ Matrix<T> Matrix<T>::mul_full(const Matrix<T> &y) const{
 
   // Form the transpose of y
   Matrix<T> y_trans = y.trans();
+  
+  if (sp_z.isNull()) {
+    // Create the sparsity pattern for the matrix-matrix product
+    CRSSparsity spres = x.sparsity().patternProduct(y_trans.sparsity());
 
-  // Create the sparsity pattern for the matrix-matrix product
-  CRSSparsity spres = x.sparsity().patternProduct(y_trans.sparsity());
-
-  // Create the return object
-  ret = Matrix<T>(spres, 0);
+    // Create the return object
+    ret = Matrix<T>(spres, 0);
+  } else {
+    ret = Matrix<T>(sp_z, 0);
+  }
 
   // Carry out the matrix product
   mul_no_alloc_nt(x,y_trans,ret);
@@ -1254,9 +1260,9 @@ Matrix<T> Matrix<T>::mul_full(const Matrix<T> &y) const{
 template<class T>
 void Matrix<T>::mul_no_alloc_nn(const Matrix<T> &x, const Matrix<T> &y, Matrix<T>& z){
   // Assert dimensions
-  casadi_assert(x.size1()==z.size1());
-  casadi_assert(y.size2()==z.size2());
-  casadi_assert(x.size2()==y.size1());
+  casadi_assert_message(x.size1()==z.size1(),"Dimension error. Got x=" << x.dimString() << " and z=" << z.dimString() << ".");
+  casadi_assert_message(y.size2()==z.size2(),"Dimension error. Got y=" << y.dimString() << " and z=" << z.dimString() << ".");
+  casadi_assert_message(x.size2()==y.size1(),"Dimension error. Got x=" << x.dimString() << " and y=" << y.dimString() << ".");
   
   // Direct access to the arrays
   const std::vector<int> &x_rowind = x.rowind();
@@ -1293,8 +1299,8 @@ void Matrix<T>::mul_no_alloc_nn(const Matrix<T> &x, const Matrix<T> &y, Matrix<T
   template<class T>
   void Matrix<T>::mul_no_alloc_nn(const Matrix<T> &x, const std::vector<T> &y, std::vector<T>& z){
     // Assert dimensions
-    casadi_assert(x.size1()==z.size());
-    casadi_assert(x.size2()==y.size());
+    casadi_assert_message(x.size1()==z.size(),"Dimension error. Got x=" << x.dimString() << " and z=" << z.size() << ".");
+    casadi_assert_message(x.size2()==y.size(),"Dimension error. Got x=" << x.dimString() << " and y=" << y.size() << ".");
     
     // Direct access to the arrays
     const std::vector<int> &x_rowind = x.rowind();
@@ -1315,8 +1321,8 @@ void Matrix<T>::mul_no_alloc_nn(const Matrix<T> &x, const Matrix<T> &y, Matrix<T
   template<class T>
   void Matrix<T>::mul_no_alloc_tn(const Matrix<T>& x_trans, const std::vector<T> &y, std::vector<T> &z){
     // Assert dimensions
-    casadi_assert(x_trans.size2()==z.size());
-    casadi_assert(x_trans.size1()==y.size());
+    casadi_assert_message(x_trans.size2()==z.size(),"Dimension error. Got x_trans=" << x_trans.dimString() << " and z=" << z.size() << ".");
+    casadi_assert_message(x_trans.size1()==y.size(),"Dimension error. Got x_trans=" << x_trans.dimString() << " and y=" << y.size() << ".");
     
     // Direct access to the arrays
     const std::vector<int> &x_colind = x_trans.rowind();
@@ -1335,9 +1341,9 @@ void Matrix<T>::mul_no_alloc_nn(const Matrix<T> &x, const Matrix<T> &y, Matrix<T
 template<class T>
 void Matrix<T>::mul_no_alloc_tn(const Matrix<T>& x_trans, const Matrix<T> &y, Matrix<T> &z){
   // Assert dimensions
-  casadi_assert(x_trans.size2()==z.size1());
-  casadi_assert(y.size2()==z.size2());
-  casadi_assert(x_trans.size1()==y.size1());
+  casadi_assert_message(x_trans.size2()==z.size1(),"Dimension error. Got x_trans=" << x_trans.dimString() << " and z=" << z.dimString() << ".");
+  casadi_assert_message(y.size2()==z.size2(),"Dimension error. Got y=" << y.dimString() << " and z=" << z.dimString() << ".");
+  casadi_assert_message(x_trans.size1()==y.size1(),"Dimension error. Got x_trans=" << x_trans.dimString() << " and y=" << y.dimString() << ".");
   
   // Direct access to the arrays
   const std::vector<int> &x_colind = x_trans.rowind();
@@ -1374,9 +1380,9 @@ void Matrix<T>::mul_no_alloc_tn(const Matrix<T>& x_trans, const Matrix<T> &y, Ma
 template<class T>
 void Matrix<T>::mul_no_alloc_nt(const Matrix<T> &x, const Matrix<T> &y_trans, Matrix<T>& z){
   // Assert dimensions
-  casadi_assert(x.size1()==z.size1());
-  casadi_assert(y_trans.size1()==z.size2());
-  casadi_assert(x.size2()==y_trans.size2());
+  casadi_assert_message(x.size1()==z.size1(),"Dimension error. Got x=" << x.dimString() << " and z=" << z.dimString() << ".");
+  casadi_assert_message(y_trans.size1()==z.size2(),"Dimension error. Got y_trans=" << y_trans.dimString() << " and z=" << z.dimString() << ".");
+  casadi_assert_message(x.size2()==y_trans.size2(),"Dimension error. Got x=" << x.dimString() << " and y_trans=" << y_trans.dimString() << ".");
   
   // Direct access to the arrays
   const std::vector<int> &x_rowind = x.rowind();
@@ -1469,7 +1475,7 @@ void Matrix<T>::mul_sparsity(Matrix<T> &x, Matrix<T> &y_trans, Matrix<T>& z){
 template<class T>
 T Matrix<T>::quad_form(const Matrix<T>& A, const std::vector<T>& x){
   // Assert dimensions
-  casadi_assert(x.size()==A.size1() && x.size()==A.size2());
+  casadi_assert_message(x.size()==A.size1() && x.size()==A.size2(),"Dimension mismatch. Got x=" << x.size() << " and A=" << A.dimString());
   
   // Access the internal data of A
   const std::vector<int> &A_rowind = A.rowind();
@@ -1765,14 +1771,15 @@ Matrix<T> Matrix<T>::nan(int n, int m){
 
 template<class T>
 void Matrix<T>::append(const Matrix<T>& y){
-  // Quick return if we are adding an empty expression
-  if(y.empty()) return;
 
-  // Likewise if expr is empty
-  if(empty()){
+  // Quick return if expr is empty
+  if(size1()==0 && size2()==0){
     *this=y;
     return;
   }
+
+  // Quick return if empty
+  if(y.size1()==0 && y.size2()==0) return;
   
   // Append the sparsity pattern
   sparsityRef().append(y.sparsity());

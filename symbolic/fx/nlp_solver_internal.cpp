@@ -125,8 +125,9 @@ namespace CasADi{
       if(nlp_mx.isNull()){
 	casadi_warning("Cannot expand NLP as it is not an MXFunction");
       } else {
-	nlp_ = SXFunction(nlp_mx);
-	nlp_.init();
+        nlp_ = SXFunction(nlp_mx);
+        nlp_.copyOptions(nlp_mx, true);
+        nlp_.init();
       }
     }
   
@@ -141,7 +142,7 @@ namespace CasADi{
           if (!callback_.input(i).empty()) {
             casadi_assert_message(callback_.input(i).sparsity()==output(i).sparsity(),
                                   "Callback function should have the output scheme of NLPSolver as input scheme. " << 
-                                  describeInput(inputScheme_,i) << " was found to be " << callback_.input(i).dimString() << " instead of expected " << output(i).dimString() << "."
+                                  inputScheme_.describeInput(i) << " was found to be " << callback_.input(i).dimString() << " instead of expected " << output(i).dimString() << "."
                                   );
           }
           callback_.input(i).setAll(0);
@@ -197,6 +198,8 @@ namespace CasADi{
     gradF.init(false);
     casadi_assert_message(gradF.getNumInputs()==GRADF_NUM_IN, "Wrong number of inputs to the gradient function. Note: The gradient signature was changed in #544");
     casadi_assert_message(gradF.getNumOutputs()==GRADF_NUM_OUT, "Wrong number of outputs to the gradient function. Note: The gradient signature was changed in #544");
+    gradF.setInputScheme(SCHEME_GradFInput);
+    gradF.setOutputScheme(SCHEME_GradFOutput);
     log("Objective gradient function initialized");
     return gradF;
   }
@@ -219,12 +222,16 @@ namespace CasADi{
     } else {
       log("Generating constraint Jacobian");
       jacG = nlp_.jacobian(NL_X,NL_G);
+      jacG.setOption("number_of_fwd_dir",0);
+      jacG.setOption("number_of_adj_dir",0);
       log("Jacobian function generated");
     }
     jacG.setOption("name","jac_g");
     jacG.init(false);
     casadi_assert_message(jacG.getNumInputs()==JACG_NUM_IN, "Wrong number of inputs to the Jacobian function. Note: The Jacobian signature was changed in #544");
     casadi_assert_message(jacG.getNumOutputs()==JACG_NUM_OUT, "Wrong number of outputs to the Jacobian function. Note: The Jacobian signature was changed in #544");
+    jacG.setInputScheme(SCHEME_JacGInput);
+    jacG.setOutputScheme(SCHEME_JacGOutput);
     log("Jacobian function initialized");
     return jacG;
   }
@@ -266,12 +273,16 @@ namespace CasADi{
       FX& gradLag = this->gradLag();
       log("Generating Hessian of the Lagrangian");
       hessLag = gradLag.jacobian(NL_X,NL_NUM_OUT+NL_X,false,true);
+      hessLag.setOption("number_of_fwd_dir",0);
+      hessLag.setOption("number_of_adj_dir",0);
       log("Hessian function generated");
     }
     hessLag.setOption("name","hess_lag");
     hessLag.init(false);
     casadi_assert_message(hessLag.getNumInputs()==HESSLAG_NUM_IN, "Wrong number of inputs to the Hessian function. Note: The Lagrangian Hessian signature was changed in #544");
     casadi_assert_message(hessLag.getNumOutputs()==HESSLAG_NUM_OUT, "Wrong number of outputs to the Hessian function. Note: The Lagrangian Hessian signature was changed in #544");
+    hessLag.setInputScheme(SCHEME_HessLagInput);
+    hessLag.setOutputScheme(SCHEME_HessLagOutput);
     log("Hessian function initialized");
     return hessLag;
   }
@@ -294,6 +305,15 @@ namespace CasADi{
       log("Hessian sparsity pattern generated");
     }
     return spHessLag;
+  }
+  
+  void NLPSolverInternal::checkInputs() const {
+    for (int i=0;i<input(NLP_SOLVER_LBX).size();++i) {
+      casadi_assert_message(input(NLP_SOLVER_LBX).at(i)<=input(NLP_SOLVER_UBX).at(i),"LBX[i] <= UBX[i] was violated for i=" << i << ". Got LBX[i]=" << input(NLP_SOLVER_LBX).at(i) << " and UBX[i]=" << input(NLP_SOLVER_UBX).at(i));
+    }
+    for (int i=0;i<input(NLP_SOLVER_LBG).size();++i) {
+      casadi_assert_message(input(NLP_SOLVER_LBG).at(i)<=input(NLP_SOLVER_UBG).at(i),"LBG[i] <= UBG[i] was violated for i=" << i << ". Got LBG[i]=" << input(NLP_SOLVER_LBG).at(i) << " and UBG[i]=" << input(NLP_SOLVER_UBG).at(i));
+    }
   }
 
 } // namespace CasADi

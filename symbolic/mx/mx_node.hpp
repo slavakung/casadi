@@ -297,10 +297,19 @@ namespace CasADi{
     /// Reshape
     virtual MX getReshape(const CRSSparsity& sp) const;
     
-    /// Matrix multiplcation
-    virtual MX getMultiplication(const MX& y) const;
+    /** \brief Matrix multiplication
+    *  
+    *  The optinal argument sp_z will be used as the sparsity pattern of the result
+    */
+    virtual MX getMultiplication(const MX& y, const CRSSparsity& sp_z=CRSSparsity()) const;
 
-    /// Solve a system of linear equations
+    /** \brief Solve a system of linear equations
+    *
+    *      For system Ax = b:
+    *
+    *      A->getSolve(b)         
+    *
+    */
     virtual MX getSolve(const MX& r, bool tr, const LinearSolver& linear_solver) const;
 
     /// Get the nonzeros of matrix

@@ -202,7 +202,7 @@ class %sIOSchemeVector : public IOSchemeVector<M> {
       s+="  return IOSchemeVector(["
       for name, doc, enum in self.entries:
         s+=name+","
-      s=s[:-1] + "], SCHEME_%s)\n" % self.enum
+      s=s[:-1] + "], IOScheme(SCHEME_%s))\n" % self.enum
     return s
   
 class Input(Enum):
@@ -281,7 +281,7 @@ for h in locate("*.hpp",os.path.join(os.curdir,"..")):
       p.checkconsistency()
       schemes.append(p)
       
-autogenmetadatahpp.write("enum InputOutputScheme { %s , SCHEME_unknown};\n" % ", ".join(["SCHEME_"+p.enum for p in schemes]) )
+autogenmetadatahpp.write("enum InputOutputScheme { %s };\n" % ", ".join(["SCHEME_"+p.enum for p in schemes]) )
 
 autogenmetadatahpp.write("std::string getSchemeEntryName(InputOutputScheme scheme, int i);\n")
 autogenmetadatahpp.write("std::string getSchemeEntryDoc(InputOutputScheme scheme, int i);\n")
@@ -290,27 +290,7 @@ autogenmetadatahpp.write("int getSchemeEntryEnum(InputOutputScheme scheme, const
 autogenmetadatahpp.write("int getSchemeSize(InputOutputScheme scheme);\n")
 autogenmetadatahpp.write("std::string getSchemeName(InputOutputScheme scheme);\n")
 autogenmetadatahpp.write("std::string getSchemeEntryNames(InputOutputScheme scheme);\n")
-autogenmetadatahpp.write("std::string describeInput(InputOutputScheme scheme, int i);\n")
-autogenmetadatahpp.write("std::string describeOutput(InputOutputScheme scheme, int i);\n")
-autogencpp.write("""
-std::string describeInput(InputOutputScheme scheme, int i) {
-  std::stringstream ss;
-  ss << "Input argument #" << i;
-  if (scheme!=SCHEME_unknown) {
-    ss << " (" << getSchemeEntryEnumName(scheme,i) <<  " aka '" << getSchemeEntryName(scheme,i) << "')";
-  }
-  return ss.str();
-}
 
-std::string describeOutput(InputOutputScheme scheme, int i) {
-  std::stringstream ss;
-  ss << "Output argument #" << i;
-  if (scheme!=SCHEME_unknown) {
-    ss << " (" << getSchemeEntryEnumName(scheme,i) <<  " aka '" << getSchemeEntryName(scheme,i) << "')";
-  }
-  return ss.str();
-}
-""")
 autogenpy.write("#ifdef SWIGPYTHON\n")
 autogenpy.write("%pythoncode %{\n")
 autogenpy.write("""
@@ -328,6 +308,13 @@ def IOSchemeVector(arg,io_scheme):
     return IOSchemeVectorCRSSparsity(arg,io_scheme)
   except:
     pass
+  raise Exception("IOSchemeVector called with faulty arguments. Individual values must be SXMatrix, MX or CRSSparsity.")
+    
+def customIO(**kwargs):
+  items = kwargs.items()
+  
+  return IOSchemeVector(zip(*items)[1], IOScheme(zip(*items)[0]))
+  
 """)
 autogenpy.write("%}\n")
 autogenpy.write("#endif //SWIGPYTHON\n")
@@ -344,17 +331,28 @@ for p in schemes:
   autogenpy.write(p.swigcode())
   autogenpy.write("#endif //SWIGPYTHON\n")
   autogenpy.write(p.pureswigcode())
+
+autogenhelpershpp.write("""
+/// Helper function for 'customIO'
+template<class M>
+IOSchemeVector<M> customIO(""" + ",".join(['const std::string arg_s%d="",M arg_m%d=M()' % (i,i) for i in range(20)]) +"""){
+  std::vector<std::string> k;
+  std::vector<M> v;
+"""+
+  "\n".join(['  if (arg_s%d!="") { k.push_back(arg_s%d);  v.push_back(arg_m%d); }' % (i,i,i) for i in range(20) ])
++"""
+  return IOSchemeVector<M>(v,IOScheme(k));
+}
+""")
   
 autogencpp.write("std::string getSchemeName(InputOutputScheme scheme) {\n  switch (scheme) {\n")
 for p in schemes:
   autogencpp.write("""    case SCHEME_%s: return "%s";\n""" % (p.enum,p.enum))
-autogencpp.write("""    case SCHEME_unknown: return "unknown";\n""")
 autogencpp.write("  }\n}\n")
 
 autogencpp.write("std::string getSchemeEntryNames(InputOutputScheme scheme) {\n  switch (scheme) {\n")
 for p in schemes:
   autogencpp.write("""    case SCHEME_%s: return "%s";\n""" % (p.enum,", ".join([name for name, doc, enum in p.entries])))
-autogencpp.write("""    case SCHEME_unknown: return "not available";\n""")
 autogencpp.write("  }\n}\n")
 
 autogencpp.write("std::string getSchemeEntryName(InputOutputScheme scheme, int i) {\n  switch (scheme) {\n")
@@ -363,7 +361,6 @@ for p in schemes:
   for i, (name, doc, enum) in enumerate(p.entries):
     autogencpp.write("""      if(i==%d) return "%s";\n""" % (i,name))
   autogencpp.write("      break;\n")
-autogencpp.write("""    case SCHEME_unknown: return "none";\n""")
 autogencpp.write("  }\n")
 autogencpp.write("""  casadi_error("getSchemeEntryName: supplied number is out of range. Scheme '" << getSchemeName(scheme) << "' has only " << getSchemeSize(scheme) << " entries: " << getSchemeEntryNames(scheme) << ".");\n""")
 autogencpp.write("}\n")
@@ -374,7 +371,6 @@ for p in schemes:
   for i, (name, doc, enum) in enumerate(p.entries):
     autogencpp.write("""      if(i==%d) return "%s";\n""" % (i,doc))
   autogencpp.write("      break;\n")
-autogencpp.write("""    case SCHEME_unknown: return "none";\n""")
 autogencpp.write("  }\n")
 autogencpp.write("""  casadi_error("getSchemeEntryDoc: supplied number is out of range. Scheme '" << getSchemeName(scheme) << "' has only " << getSchemeSize(scheme) << " entries: " << getSchemeEntryNames(scheme) << ".");\n""")
 autogencpp.write("}\n")
@@ -385,7 +381,6 @@ for p in schemes:
   for i, (name, doc, enum) in enumerate(p.entries):
     autogencpp.write("""      if(i==%d) return "%s";\n""" % (i,enum))
   autogencpp.write("      break;\n")
-autogencpp.write("""    case SCHEME_unknown: return "none";\n""")
 autogencpp.write("  }\n")
 autogencpp.write("""  casadi_error("getSchemeEntryEnumName: supplied number is out of range. Scheme '" << getSchemeName(scheme) << "' has only " << getSchemeSize(scheme) << " entries: " << getSchemeEntryNames(scheme) << ".");\n""")
 autogencpp.write("}\n")
@@ -395,7 +390,6 @@ for p in schemes:
   autogencpp.write("    case SCHEME_%s: \n" % p.enum)
   autogencpp.write("""      return %d;\n""" % len(p.entries))
   autogencpp.write("      break;\n")
-autogencpp.write("""    case SCHEME_unknown: casadi_error("getSchemeSize: Unknown scheme has no known size."); return -1;\n""")
 autogencpp.write("  }\n")
 autogencpp.write("}\n")
 
@@ -405,7 +399,6 @@ for p in schemes:
   for i, (name, doc, enum) in enumerate(p.entries):
     autogencpp.write("""      if(name=="%s") return %d;\n""" % (name,i))
   autogencpp.write("      break;\n")
-autogencpp.write("""    case SCHEME_unknown: casadi_error("Unknown scheme"); return -1;\n""")
 autogencpp.write("  }\n")
 autogencpp.write("""  casadi_error("getSchemeEntryEnum: Scheme '" << getSchemeName(scheme) <<  "' has no entry named '" << name <<  "'. Available entries are: " << getSchemeEntryNames(scheme) << ".");\n""")
 autogencpp.write("}\n")

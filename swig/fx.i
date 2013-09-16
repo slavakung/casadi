@@ -38,6 +38,7 @@
 #include "symbolic/fx/sdp_solver.hpp"
 #include "symbolic/fx/socp_solver.hpp"
 #include "symbolic/fx/qcqp_solver.hpp"
+#include "symbolic/fx/sdqp_solver.hpp"
 #include "symbolic/fx/external_function.hpp"
 #include "symbolic/fx/parallelizer.hpp"
 #include "symbolic/fx/c_function.hpp"
@@ -55,6 +56,7 @@
 
 %include "symbolic/fx/io_interface.hpp"
 %template(IOInterfaceFX) CasADi::IOInterface<CasADi::FX>;
+%include "symbolic/fx/io_scheme.hpp"
 %include "symbolic/fx/io_scheme_vector.hpp"
 %template(IOSchemeVectorMX) CasADi::IOSchemeVector< CasADi::MX >;
 %template(IOSchemeVectorSXMatrix) CasADi::IOSchemeVector< CasADi::Matrix<CasADi::SX> >;
@@ -114,6 +116,7 @@
 %include "symbolic/fx/sdp_solver.hpp"
 %include "symbolic/fx/socp_solver.hpp"
 %include "symbolic/fx/qcqp_solver.hpp"
+%include "symbolic/fx/sdqp_solver.hpp"
 %include "symbolic/fx/external_function.hpp"
 %include "symbolic/fx/parallelizer.hpp"
 %include "symbolic/fx/c_function.hpp"

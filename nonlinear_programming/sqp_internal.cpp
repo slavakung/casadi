@@ -51,7 +51,7 @@ namespace CasADi{
     addOption("lbfgs_memory",      OT_INTEGER,     10,              "Size of L-BFGS memory.");
     addOption("regularize",        OT_BOOLEAN,  false,              "Automatic regularization of Lagrange Hessian.");
     addOption("print_header",      OT_BOOLEAN,   true,              "Print the header with problem statistics");
-    
+    addOption("min_step_size",     OT_REAL,   1e-10,                "The size (inf-norm) of the step size should not become smaller than this.");
     // Monitors
     addOption("monitor",      OT_STRINGVECTOR, GenericType(),  "", "eval_f|eval_g|eval_jac_g|eval_grad_f|eval_h|qp|dx", true);
 
@@ -93,6 +93,7 @@ namespace CasADi{
     tol_du_ = getOption("tol_du");
     regularize_ = getOption("regularize");
     exact_hessian_ = getOption("hessian_approximation")=="exact";
+    min_step_size_ = getOption("min_step_size");
     
     eps_active_ = getOption("eps_active");
     nu_ = getOption("nu");
@@ -113,6 +114,9 @@ namespace CasADi{
     ymax = 1e+10;
 
     std::cout << "Nu: " << nu_ << std::endl; 
+
+    
+    
     // Get/generate required functions
     gradF();
     jacG();
@@ -121,7 +125,7 @@ namespace CasADi{
     }
     
     // TODO: make some Check here
-    stabilize_ = true;
+    stabilize_ = false;
 
     // Allocate a QP solver
     CRSSparsity H_sparsity = exact_hessian_ ? hessLag().output().sparsity() : sp_dense(nx_,nx_);
@@ -284,6 +288,7 @@ namespace CasADi{
   void SQPInternal::evaluate(int nfdir, int nadir){
     casadi_assert(nfdir==0 && nadir==0);
   
+    if (inputs_check_) checkInputs();
     checkInitialBounds();
   
     // Get problem data
@@ -382,7 +387,7 @@ namespace CasADi{
     
       // Print header occasionally
       if(iter % 10 == 0) printIteration(cout);
- 
+	  
       // Call callback function if present
       if (!callback_.isNull()) {
         if (!callback_.input(NLP_SOLVER_F).empty()) callback_.input(NLP_SOLVER_F).set(fk_);
@@ -395,6 +400,7 @@ namespace CasADi{
         if (callback_.output(0).at(0)) {
           cout << endl;
           cout << "CasADi::SQPMethod: aborted by callback..." << endl;
+          stats_["return_status"] = "User_Requested_Stop";
           break;
         }
       }
@@ -416,6 +422,7 @@ namespace CasADi{
         printIteration(cout,iter,fk_,pr_inf,gLag_norminf,dx_norm1,reg_,TRDelta_,ls_iter,ls_success, ' ');
         cout << endl;
         cout << "CasADi::SQPMethod: Convergence achieved after " << iter << " iterations." << endl;
+        stats_["return_status"] = "Solve_Succeeded";
         break;
       }
 
@@ -466,9 +473,17 @@ namespace CasADi{
       if (iter >= max_iter_){
         cout << endl;
         cout << "CasADi::SQPMethod: Maximum number of iterations reached." << endl;
+        stats_["return_status"] = "Maximum_Iterations_Exceeded";
         break;
       }
-    
+      
+     /** if (iter > 0 && dx_norminf <= min_step_size_) {
+        cout << endl;
+        cout << "CasADi::SQPMethod: Search direction becomes too small without convergence criteria being met." << endl;
+        stats_["return_status"] = "Search_Direction_Becomes_Too_Small";
+        break;
+      }
+    */
       // Printing information about the actual iterate
       printIteration(cout,iter,fk_,pr_inf,gLag_norminf,dx_norm1,reg_,TRDelta_,ls_iter,ls_success, info);
    
@@ -480,6 +495,7 @@ namespace CasADi{
       // Start a new iteration
       iter++;
     
+      log("Formulating QP");
 
       // Formulate the QP
       transform(lbx.begin(),lbx.end(),x_.begin(),qp_LBX_.begin(),minus<double>());
@@ -725,6 +741,7 @@ namespace CasADi{
       for(int i=0; i<ng_; ++i) mu_[i] = t * dy_[i] + mu_[i];
       for(int i=0; i<nx_; ++i) mu_x_[i] = t * qp_DUAL_X_[i] + (1 - t) * mu_x_[i];
       for (int i=0;i<ng_;++i) s_[i] = t*ds_[i]+s_[i];
+
       if(!exact_hessian_){
         // Evaluate the gradient of the Lagrangian with the old x but new mu (for BFGS)
         copy(gf_.begin(),gf_.end(),gLag_old_.begin());
@@ -737,9 +754,6 @@ namespace CasADi{
       copy(x_.begin(),x_.end(),x_old_.begin());
       copy(x_cand_.begin(),x_cand_.end(),x_.begin());
       Merit_ = Merit_cand_;
-      
-
-
 
       // Evaluate the constraint Jacobian
       log("Evaluating jac_g");

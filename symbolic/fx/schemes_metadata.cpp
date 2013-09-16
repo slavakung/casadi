@@ -24,24 +24,6 @@
 #include "schemes_metadata.hpp"
 #include <string>
 namespace CasADi{
-
-std::string describeInput(InputOutputScheme scheme, int i) {
-  std::stringstream ss;
-  ss << "Input argument #" << i;
-  if (scheme!=SCHEME_unknown) {
-    ss << " (" << getSchemeEntryEnumName(scheme,i) <<  " aka '" << getSchemeEntryName(scheme,i) << "')";
-  }
-  return ss.str();
-}
-
-std::string describeOutput(InputOutputScheme scheme, int i) {
-  std::stringstream ss;
-  ss << "Output argument #" << i;
-  if (scheme!=SCHEME_unknown) {
-    ss << " (" << getSchemeEntryEnumName(scheme,i) <<  " aka '" << getSchemeEntryName(scheme,i) << "')";
-  }
-  return ss.str();
-}
 std::string getSchemeName(InputOutputScheme scheme) {
   switch (scheme) {
     case SCHEME_ACADO_Input: return "ACADO_Input";
@@ -82,10 +64,12 @@ std::string getSchemeName(InputOutputScheme scheme) {
     case SCHEME_SDPInput: return "SDPInput";
     case SCHEME_SDPOutput: return "SDPOutput";
     case SCHEME_SDPStruct: return "SDPStruct";
+    case SCHEME_SDQPInput: return "SDQPInput";
+    case SCHEME_SDQPOutput: return "SDQPOutput";
+    case SCHEME_SDQPStruct: return "SDQPStruct";
     case SCHEME_SOCPInput: return "SOCPInput";
     case SCHEME_SOCPOutput: return "SOCPOutput";
     case SCHEME_SOCPStruct: return "SOCPStruct";
-    case SCHEME_unknown: return "unknown";
   }
 }
 std::string getSchemeEntryNames(InputOutputScheme scheme) {
@@ -128,10 +112,12 @@ std::string getSchemeEntryNames(InputOutputScheme scheme) {
     case SCHEME_SDPInput: return "f, c, g, a, lba, uba, lbx, ubx";
     case SCHEME_SDPOutput: return "x, p, dual, cost, dual_cost, lam_a, lam_x";
     case SCHEME_SDPStruct: return "f, g, a";
+    case SCHEME_SDQPInput: return "h, c, f, g, a, lba, uba, lbx, ubx";
+    case SCHEME_SDQPOutput: return "x, p, dual, cost, dual_cost, lam_a, lam_x";
+    case SCHEME_SDQPStruct: return "h, f, g, a";
     case SCHEME_SOCPInput: return "g, h, e, f, c, a, lba, uba, lbx, ubx";
     case SCHEME_SOCPOutput: return "x, cost, lam_a, lam_x";
     case SCHEME_SOCPStruct: return "g, a";
-    case SCHEME_unknown: return "not available";
   }
 }
 std::string getSchemeEntryName(InputOutputScheme scheme, int i) {
@@ -399,6 +385,32 @@ std::string getSchemeEntryName(InputOutputScheme scheme, int i) {
       if(i==1) return "g";
       if(i==2) return "a";
       break;
+    case SCHEME_SDQPInput: 
+      if(i==0) return "h";
+      if(i==1) return "c";
+      if(i==2) return "f";
+      if(i==3) return "g";
+      if(i==4) return "a";
+      if(i==5) return "lba";
+      if(i==6) return "uba";
+      if(i==7) return "lbx";
+      if(i==8) return "ubx";
+      break;
+    case SCHEME_SDQPOutput: 
+      if(i==0) return "x";
+      if(i==1) return "p";
+      if(i==2) return "dual";
+      if(i==3) return "cost";
+      if(i==4) return "dual_cost";
+      if(i==5) return "lam_a";
+      if(i==6) return "lam_x";
+      break;
+    case SCHEME_SDQPStruct: 
+      if(i==0) return "h";
+      if(i==1) return "f";
+      if(i==2) return "g";
+      if(i==3) return "a";
+      break;
     case SCHEME_SOCPInput: 
       if(i==0) return "g";
       if(i==1) return "h";
@@ -421,7 +433,6 @@ std::string getSchemeEntryName(InputOutputScheme scheme, int i) {
       if(i==0) return "g";
       if(i==1) return "a";
       break;
-    case SCHEME_unknown: return "none";
   }
   casadi_error("getSchemeEntryName: supplied number is out of range. Scheme '" << getSchemeName(scheme) << "' has only " << getSchemeSize(scheme) << " entries: " << getSchemeEntryNames(scheme) << ".");
 }
@@ -515,7 +526,7 @@ std::string getSchemeEntryDoc(InputOutputScheme scheme, int i) {
       break;
     case SCHEME_LinsolInput: 
       if(i==0) return "The square matrix A: sparse, (n x n).";
-      if(i==1) return "The right-hand-side matrix b: dense,  (n x m)";
+      if(i==1) return "The right-hand-side matrix b: dense,  (m x n)";
       if(i==2) return "Transpose A?: dense scalar, value 0 or 1,  (1 x 1)";
       break;
     case SCHEME_LinsolOutput: 
@@ -690,6 +701,32 @@ std::string getSchemeEntryDoc(InputOutputScheme scheme, int i) {
       if(i==1) return "The matrix G: ( m x m)";
       if(i==2) return "The matrix A: ( nc x n)";
       break;
+    case SCHEME_SDQPInput: 
+      if(i==0) return "The matrix H: sparse ( n x n)";
+      if(i==1) return "The vector c: ( n x 1)";
+      if(i==2) return "The vertical stack of all matrices F_i: ( nm x m)";
+      if(i==3) return "The matrix G: ( m x m)";
+      if(i==4) return "The matrix A: ( nc x n)";
+      if(i==5) return "Lower bounds on Ax ( nc x 1)";
+      if(i==6) return "Upper bounds on Ax  ( nc x 1)";
+      if(i==7) return "Lower bounds on x ( n x 1 )";
+      if(i==8) return "Upper bounds on x ( n x 1 )";
+      break;
+    case SCHEME_SDQPOutput: 
+      if(i==0) return "The primal solution (n x 1) - may be used as initial guess";
+      if(i==1) return "The solution P (m x m) - may be used as initial guess";
+      if(i==2) return "The dual solution (m x m) - may be used as initial guess";
+      if(i==3) return "The primal optimal cost (1 x 1)";
+      if(i==4) return "The dual optimal cost (1 x 1)";
+      if(i==5) return "The dual solution corresponding to the linear constraints  (nc x 1)";
+      if(i==6) return "The dual solution corresponding to simple bounds  (n x 1)";
+      break;
+    case SCHEME_SDQPStruct: 
+      if(i==0) return "The matrix H: sparse ( n x n)";
+      if(i==1) return "The vertical stack of all matrices F_i: ( nm x m)";
+      if(i==2) return "The matrix G: ( m x m)";
+      if(i==3) return "The matrix A: ( nc x n)";
+      break;
     case SCHEME_SOCPInput: 
       if(i==0) return "The vertical stack of all matrices Gi: ( N x n)";
       if(i==1) return "The vertical stack of all vectors hi: ( N x 1)";
@@ -712,7 +749,6 @@ std::string getSchemeEntryDoc(InputOutputScheme scheme, int i) {
       if(i==0) return "The vertical stack of all matrices Gi: ( N x n)";
       if(i==1) return "The matrix A: ( nc x n)";
       break;
-    case SCHEME_unknown: return "none";
   }
   casadi_error("getSchemeEntryDoc: supplied number is out of range. Scheme '" << getSchemeName(scheme) << "' has only " << getSchemeSize(scheme) << " entries: " << getSchemeEntryNames(scheme) << ".");
 }
@@ -981,6 +1017,32 @@ std::string getSchemeEntryEnumName(InputOutputScheme scheme, int i) {
       if(i==1) return "SDP_STRUCT_G";
       if(i==2) return "SDP_STRUCT_A";
       break;
+    case SCHEME_SDQPInput: 
+      if(i==0) return "SDQP_SOLVER_H";
+      if(i==1) return "SDQP_SOLVER_C";
+      if(i==2) return "SDQP_SOLVER_F";
+      if(i==3) return "SDQP_SOLVER_G";
+      if(i==4) return "SDQP_SOLVER_A";
+      if(i==5) return "SDQP_SOLVER_LBA";
+      if(i==6) return "SDQP_SOLVER_UBA";
+      if(i==7) return "SDQP_SOLVER_LBX";
+      if(i==8) return "SDQP_SOLVER_UBX";
+      break;
+    case SCHEME_SDQPOutput: 
+      if(i==0) return "SDQP_SOLVER_X";
+      if(i==1) return "SDQP_SOLVER_P";
+      if(i==2) return "SDQP_SOLVER_DUAL";
+      if(i==3) return "SDQP_SOLVER_COST";
+      if(i==4) return "SDQP_SOLVER_DUAL_COST";
+      if(i==5) return "SDQP_SOLVER_LAM_A";
+      if(i==6) return "SDQP_SOLVER_LAM_X";
+      break;
+    case SCHEME_SDQPStruct: 
+      if(i==0) return "SDQP_STRUCT_H";
+      if(i==1) return "SDQP_STRUCT_F";
+      if(i==2) return "SDQP_STRUCT_G";
+      if(i==3) return "SDQP_STRUCT_A";
+      break;
     case SCHEME_SOCPInput: 
       if(i==0) return "SOCP_SOLVER_G";
       if(i==1) return "SOCP_SOLVER_H";
@@ -1003,7 +1065,6 @@ std::string getSchemeEntryEnumName(InputOutputScheme scheme, int i) {
       if(i==0) return "SOCP_STRUCT_G";
       if(i==1) return "SOCP_STRUCT_A";
       break;
-    case SCHEME_unknown: return "none";
   }
   casadi_error("getSchemeEntryEnumName: supplied number is out of range. Scheme '" << getSchemeName(scheme) << "' has only " << getSchemeSize(scheme) << " entries: " << getSchemeEntryNames(scheme) << ".");
 }
@@ -1123,6 +1184,15 @@ int getSchemeSize(InputOutputScheme scheme) {
     case SCHEME_SDPStruct: 
       return 3;
       break;
+    case SCHEME_SDQPInput: 
+      return 9;
+      break;
+    case SCHEME_SDQPOutput: 
+      return 7;
+      break;
+    case SCHEME_SDQPStruct: 
+      return 4;
+      break;
     case SCHEME_SOCPInput: 
       return 10;
       break;
@@ -1132,7 +1202,6 @@ int getSchemeSize(InputOutputScheme scheme) {
     case SCHEME_SOCPStruct: 
       return 2;
       break;
-    case SCHEME_unknown: casadi_error("getSchemeSize: Unknown scheme has no known size."); return -1;
   }
 }
 int getSchemeEntryEnum(InputOutputScheme scheme, const std::string &name) {
@@ -1400,6 +1469,32 @@ int getSchemeEntryEnum(InputOutputScheme scheme, const std::string &name) {
       if(name=="g") return 1;
       if(name=="a") return 2;
       break;
+    case SCHEME_SDQPInput: 
+      if(name=="h") return 0;
+      if(name=="c") return 1;
+      if(name=="f") return 2;
+      if(name=="g") return 3;
+      if(name=="a") return 4;
+      if(name=="lba") return 5;
+      if(name=="uba") return 6;
+      if(name=="lbx") return 7;
+      if(name=="ubx") return 8;
+      break;
+    case SCHEME_SDQPOutput: 
+      if(name=="x") return 0;
+      if(name=="p") return 1;
+      if(name=="dual") return 2;
+      if(name=="cost") return 3;
+      if(name=="dual_cost") return 4;
+      if(name=="lam_a") return 5;
+      if(name=="lam_x") return 6;
+      break;
+    case SCHEME_SDQPStruct: 
+      if(name=="h") return 0;
+      if(name=="f") return 1;
+      if(name=="g") return 2;
+      if(name=="a") return 3;
+      break;
     case SCHEME_SOCPInput: 
       if(name=="g") return 0;
       if(name=="h") return 1;
@@ -1422,7 +1517,6 @@ int getSchemeEntryEnum(InputOutputScheme scheme, const std::string &name) {
       if(name=="g") return 0;
       if(name=="a") return 1;
       break;
-    case SCHEME_unknown: casadi_error("Unknown scheme"); return -1;
   }
   casadi_error("getSchemeEntryEnum: Scheme '" << getSchemeName(scheme) <<  "' has no entry named '" << name <<  "'. Available entries are: " << getSchemeEntryNames(scheme) << ".");
 }

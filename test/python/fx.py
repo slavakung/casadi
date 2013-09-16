@@ -308,7 +308,7 @@ class FXtests(casadiTestCase):
     F.setInput([0.1,0.7,1.3],0)
     F.setInput([7.1,2.9],1)
     
-    self.checkfx(f,F,sens_der=False)
+    self.checkfx(f,F,sens_der=False,evals=False)
     
   
   @memory_heavy()
@@ -523,6 +523,35 @@ class FXtests(casadiTestCase):
     self.checkarray(ar,DMatrix([3,4]))
     self.checkarray(br,DMatrix([3,4]))
     self.checkarray(cr,DMatrix([3,4]))
+    
+  def test_customIO(self):
+    x = ssym("x")
+    f = SXFunction([x],customIO(foo=x*x,bar=x))
+    f.init()
+    
+    f.setInput(12,0)
+    f.evaluate()
+    self.checkarray(DMatrix([144]),f.output("foo"))
+    self.checkarray(DMatrix([12]),f.output("bar"))
+    
+    with self.assertRaises(Exception):
+      f.output("baz")
+      
+  def test_unknown_options(self):
+    x = ssym("x")
+    f = SXFunction([x],[x])
+    f.init()
+    
+    with self.assertRaises(Exception):
+      f.setOption({"fooo": False},False)
+    
+    f.setOption({"fooo": False},True)
+    
+    f.setOption({"name": "abc"},False)
+    self.assertTrue(f.getOption("name")=="abc")
+    f.setOption({"name": "def"},True)
+    self.assertTrue(f.getOption("name")=="def")
+    
     
 if __name__ == '__main__':
     unittest.main()

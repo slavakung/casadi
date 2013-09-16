@@ -25,12 +25,16 @@
 #include "../mx/mx_tools.hpp"
 #include <iterator>
 
+#include "../casadi_options.hpp"
+#include "../profiling.hpp"
+
 using namespace std;
 namespace CasADi{
 
   ImplicitFunctionInternal::ImplicitFunctionInternal(const FX& f, const FX& jac, const LinearSolver& linsol) : f_(f), jac_(jac), linsol_(linsol){
     addOption("linear_solver",            OT_LINEARSOLVER, GenericType(), "User-defined linear solver class. Needed for sensitivities.");
     addOption("linear_solver_options",    OT_DICTIONARY,   GenericType(), "Options to be passed to the linear solver.");
+    addOption("constraints",              OT_INTEGERVECTOR,GenericType(),"Constrain the unknowns. 0 (default): no constraint on ui, 1: ui >= 0.0, -1: ui <= 0.0, 2: ui > 0.0, -2: ui < 0.0.");
   }
 
   ImplicitFunctionInternal::~ImplicitFunctionInternal(){
@@ -51,7 +55,7 @@ namespace CasADi{
     casadi_assert_message(f_.output().dense() && f_.output().size2()==1, "Residual must be a dense vector");
     casadi_assert_message(f_.input().dense() && f_.input().size2()==1, "Unknown must be a dense vector");
     n_ = f_.output().size();
-    casadi_assert_message(n_ == f_.input().size(), "Dimension mismatch");
+    casadi_assert_message(n_ == f_.input().size(), "Dimension mismatch. Input size is " << f_.input().size() << ", while output size is " << f_.output().size());
     casadi_assert_message(f_.getNumOutputs()==1, "Auxiliary outputs of ImplicitFunctions are no longer allowed, cf. #669");
 
     // Allocate inputs
@@ -102,6 +106,11 @@ namespace CasADi{
     
     // No factorization yet;
     fact_up_to_date_ = false;
+    
+    // Constraints
+    if (hasSetOption("constraints")) u_c_ = getOption("constraints");
+    
+    casadi_assert_message(u_c_.size()==n_ || u_c_.empty(),"Constraint vector if supplied, must be of length n, but got " << u_c_.size() << " and n = " << n_);
   }
 
   void ImplicitFunctionInternal::updateNumSens(bool recursive){
@@ -113,6 +122,14 @@ namespace CasADi{
   }
 
   void ImplicitFunctionInternal::evaluate(int nfdir, int nadir){
+    // Set up timers for profiling
+    double time_zero;
+    double time_start;
+    double time_stop;
+    if (CasadiOptions::profiling) {
+      time_zero = getRealTime();
+    }
+    
     // Mark factorization as out-of-date. TODO: make this conditional
     fact_up_to_date_ = false;
 
@@ -126,6 +143,10 @@ namespace CasADi{
     casadi_assert_message(!linsol_.isNull(),"Sensitivities of an implicit function requires a provided linear solver");
     casadi_assert_message(!jac_.isNull(),"Sensitivities of an implicit function requires an exact Jacobian");
   
+    if (CasadiOptions::profiling) {
+       time_start = getRealTime(); // Start timer
+    }
+    
     // Evaluate and factorize the Jacobian
     if (!fact_up_to_date_) {
       // Pass inputs
@@ -206,6 +227,13 @@ namespace CasADi{
         f_.adjSens(i+1,dir).get(adjSens(i,dir));
       }
     }
+    
+
+
+    if (CasadiOptions::profiling) {
+      time_stop = getRealTime(); // Stop timer
+      CasadiOptions::profilingLog  << double(time_stop-time_start)*1e6 << " ns | " << double(time_stop-time_zero)*1e3 << " ms | " << this << ":" << getOption("name") << ":3||stuff" << std::endl;
+    }
   }
 
   void ImplicitFunctionInternal::evaluateMX(MXNode* node, const MXPtrV& arg, MXPtrV& res, const MXPtrVV& fseed, MXPtrVV& fsens, const MXPtrVV& aseed, MXPtrVV& asens, bool output_given){
@@ -275,7 +303,7 @@ namespace CasADi{
       rhs = vertsplit(J->getSolve(vertcat(rhs),true,linsol_),row_offset);
       for(int d=0; d<nfwd; ++d){
         if(fsens[d][0]!=0){
-          *fsens[d][0] = -rhs[d];
+          *fsens[d][0] = -trans(rhs[d]);
         }
       }
       row_offset.resize(1);
@@ -288,8 +316,8 @@ namespace CasADi{
       v_it++;
 
       for(int i=0; i<asens[d].size(); ++i, ++v_it){
-        if(asens[d][i]!=0){
-          *asens[d][i] = - *v_it;
+        if(asens[d][i]!=0 && !(*v_it).isNull()){
+          *asens[d][i] += - *v_it;
         }
       }
     }

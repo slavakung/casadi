@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.6)
 project(casadi C CXX)
 set(PACKAGE_NAME "CasADi")
-set(PACKAGE_VERSION "1.6.0+")
+set(PACKAGE_VERSION "1.7.0+")
 
 # For systems with git installed, find out revsion and description.
 execute_process(COMMAND git rev-parse HEAD
@@ -72,6 +72,7 @@ option(WITH_PYTHON_INTERRUPTS "With interrupt handling inside python interface" 
 # option(WITH_GSL "Compile the GSL interface" ON)
 option(WITH_OPENMP "Compile with parallelization support" OFF)
 option(WITH_OOQP "Enable OOQP interface" ON)
+option(WITH_SQIC "Enable SQIC interface" OFF)
 option(WITH_SWIG_SPLIT "Split SWIG wrapper generation into multiple modules" OFF) 
 option(WITH_WORHP "Compile the WORHP interface" OFF) 
 option(WITH_ACADO "Compile the interfaces to ACADO and qpOASES, if it can be found" OFF) 
@@ -86,6 +87,7 @@ option(WITH_KNITRO "Compile the interface to KNITRO" ON)
 option(WITH_CPLEX "Compile the interface to CPLEX" ON)
 option(WITH_LAPACK "Compile the interface to LAPACK" ON)
 option(WITH_OPENCL "Compile with OpenCL support" OFF)
+option(WITH_PROFILING "Enable a built-in profiler to be switched used" OFF)
 
 # For code optimization
 if(CMAKE_BUILD_TYPE)
@@ -110,34 +112,6 @@ endif()
 
 include_directories(.)
 
-# The following code canonicalizes paths: 
-# e.g.  converts "foo/bar/..;foo/../foo"   to "foo;foo" 
-# When a library is present in "foo" directory, "foo/bar/..;foo/../foo" would make CMake 
-#  complain about this library being present in two different folders,  
-#  which would be a recipe for trouble where it not for 
-#  the fact that these directories are really identical. 
-#  It could be considered a workaround for a bug in CMake. 
-function(canonicalize_paths MYPATH) 
-set(MYPATH_NEW "") 
- 
-foreach(arg ${${MYPATH}}) 
-  # get_filename_component(CANONICAL_PATH ${arg} REALPATH) 
-  #  REALPATH is not defined in cmake 2.6.0
-  # 
-  # The following is a workaround:
-  set(CANONICAL_PATH "${arg}")
-  foreach(i RANGE 10)
-    string(REGEX REPLACE "/([^/]*)/\\.\\./" "/" CANONICAL_PATH "${CANONICAL_PATH}")
-  endforeach()
-  string(REGEX REPLACE "/([^/]*)/\\.\\.$" "" CANONICAL_PATH "${CANONICAL_PATH}")
-  foreach(i RANGE 10)
-    string(REGEX REPLACE "\\\\([^\\\\]*)\\\\\\.\\.\\\\" "\\\\" CANONICAL_PATH "${CANONICAL_PATH}")
-  endforeach()
-  string(REGEX REPLACE "\\\\([^\\\\]*)\\\\\\.\\.$" ""  CANONICAL_PATH "${CANONICAL_PATH}")
-  SET(MYPATH_NEW ${MYPATH_NEW} "${CANONICAL_PATH}") 
-endforeach() 
-SET(${MYPATH} ${MYPATH_NEW} PARENT_SCOPE) 
-endfunction() 
 
 # Check if the compiler supports C++11
 foreach(CXX11FLAG_TEST "" "-std=gnu++11" "-std=c++11" "-std=gnu++0x" "-std=c++0x" "-std=c++11 --DUSE_TR1_HASHMAP" "-std=c++0x -DUSE_TR1_HASHMAP")
@@ -160,7 +134,7 @@ endforeach()
 if(USE_CXX11)
   if(CXX11FLAG)
     message(STATUS "Flag needed for enabling C++11 features: ${CXX11FLAG}")
-    set(CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS} ${CXX11FLAG})
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXX11FLAG}")
   else()
     message(STATUS "No flag needed for enabling C++11 features.")
   endif()
@@ -178,6 +152,7 @@ if("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
   message(STATUS "x86_64 architecture detected - setting flag -fPIC")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
+  set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -fPIC")
 endif("${CMAKE_SYSTEM_PROCESSOR}" STREQUAL "x86_64")
 
 # Use the included Sundials
@@ -300,6 +275,12 @@ if(WITH_OOQP AND BLAS_FOUND)
 endif()
 add_feature_info(ooqp-interface OOQP_FOUND "Interface to the QP solver OOQP (requires BLAS).")
 
+if(Fortran_language_works AND WITH_SQIC)
+  find_package (SQIC)
+  set(CASADI_DEPENDENCIES ${CASADI_DEPENDENCIES} ${SQIC_LIBRARIES})
+endif()
+add_feature_info(sqic-interface SQIC_FOUND "Interface to the QP solver SQIC.")
+
 if(WITH_WORHP AND LIBXML2_FOUND)
   find_package (WORHP)
 endif()
@@ -312,6 +293,14 @@ if(WITH_DSDP AND BLAS_FOUND AND LAPACK_FOUND)
   set(DSDP_FOUND true)
 endif()
 add_feature_info(dsdp-interface DSDP_FOUND "Interface to the interior point SDP solver DSDP (requires BLAS and LAPACK).")
+
+if(WITH_PROFILING)
+  find_library(RT rt)
+  if(RT)
+    list(APPEND CASADI_DEPENDENCIES ${RT})
+  endif()
+  add_definitions(-DWITH_PROFILING)
+endif(WITH_PROFILING)
 
 add_subdirectory(symbolic)
 add_subdirectory(optimal_control)

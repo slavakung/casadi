@@ -2036,6 +2036,63 @@ class MXtests(casadiTestCase):
     
   def test_iter(self):
     self.assertEqual(len(list(msym("x",2))),2)
+
+  @known_bug()
+  def test_vertcat_empty(self):
+    a = MX(DMatrix(0,2))
+    v = vertcat([a,a])
+    
+    self.assertEqual(v.size1(),0)
+    self.assertEqual(v.size2(),2)
+    
+    a = MX(DMatrix(2,0))
+    v = vertcat([a,a])
+    
+    self.assertEqual(v.size1(),4)
+    self.assertEqual(v.size2(),0)
+    
+  def test_jacobian_empty(self):
+    x = msym("x",3)
+
+    s = jacobian(DMatrix(0,0),x).shape
+    self.assertEqual(s[0],0)
+    self.assertEqual(s[1],3)
+
+    s = jacobian(x,msym("x",0,4)).shape
+    self.assertEqual(s[0],3)
+    self.assertEqual(s[1],0)
+    
+  def test_mul_sparsity(self):
+
+    N = 10
+    x = msym("x",N,N)
+    y = msym("y",N,N)
+
+    x_ = self.randDMatrix(N,N)
+    y_ = self.randDMatrix(N,N)
+
+    filt = sp_diag(N)+sp_triplet(N,N,[1],[3])
+
+    f = MXFunction([x,y],[mul(x,y)])
+    f.init()
+    f.setInput(x_,0)
+    f.setInput(y_,1)
+    g = MXFunction([x,y],[mul(x,y,filt)])
+    g.init()
+    g.setInput(x_,0)
+    g.setInput(y_,1)
+    
+    f.evaluate()
+    g.evaluate()
+    
+    self.checkarray(IMatrix(filt,1),IMatrix(g.output().sparsity(),1))
+    
+    self.checkarray(f.output()[filt],g.output())
+    
+  def test_mul_zero_wrong(self):
+    with self.assertRaises(RuntimeError):
+      mul(msym("X",4,5),MX.zeros(3,2))
+
     
 if __name__ == '__main__':
     unittest.main()

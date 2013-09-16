@@ -32,8 +32,12 @@
 #include "external_function.hpp"
 #include "derivative.hpp"
 
+#include "../casadi_options.hpp"
+#include "../profiling.hpp"
+
 #ifdef WITH_DL 
 #include <cstdlib>
+#include <ctime>
 #endif // WITH_DL 
 
 using namespace std;
@@ -57,6 +61,7 @@ namespace CasADi{
     addOption("user_data",                OT_VOIDPTR,             GenericType(),  "A user-defined field that can be used to identify the function or pass additional information");
     addOption("monitor",      OT_STRINGVECTOR, GenericType(),  "Monitors to be activated","inputs|outputs");
     addOption("regularity_check",         OT_BOOLEAN,             true,          "Throw exceptions when NaN or Inf appears during evaluation");
+    addOption("inputs_check",         OT_BOOLEAN,             true,          "Throw exceptions when the numerical values of the inputs don't make sense");
     addOption("gather_stats",             OT_BOOLEAN,             false,         "Flag to indicate wether statistics must be gathered");
   
     verbose_ = false;
@@ -66,8 +71,6 @@ namespace CasADi{
     monitor_inputs_ = false;
     monitor_outputs_ = false;
   
-    inputScheme_  = SCHEME_unknown;
-    outputScheme_ = SCHEME_unknown;
   }
 
 
@@ -125,6 +128,8 @@ namespace CasADi{
     monitor_outputs_ = monitored("outputs");
   
     gather_stats_ = getOption("gather_stats");
+    
+    inputs_check_ = getOption("inputs_check");
 
     // Mark the function as initialized
     is_init_ = true;
@@ -175,30 +180,30 @@ namespace CasADi{
     if (getNumInputs()==1) {
       stream << " Input: " << input().dimString() << endl;
     } else{
-      if (inputScheme_==SCHEME_unknown) {
+      if (inputScheme_.isNull()) {
         stream << " Inputs (" << getNumInputs() << "):" << std::endl;
         for (int i=0;i<getNumInputs();i++) {
           stream << "  " << i << ". " << input(i).dimString() << std::endl;
         }
       } else {
-        stream << " Inputs (" << getSchemeName(inputScheme_) << ": " << getNumInputs() << "):" << std::endl;
+        stream << " Inputs (" << inputScheme_.name() << ": " << getNumInputs() << "):" << std::endl;
         for (int i=0;i<getNumInputs();i++) {
-          stream << "  " << i  << ". (" << getSchemeEntryEnumName(inputScheme_,i) << " aka " << getSchemeEntryName(inputScheme_,i) << ")   " << input(i).dimString() << std::endl;
+          stream << "  " << i  << ". (" << inputScheme_.describe(i) << ")   " << input(i).dimString() << std::endl;
         }
       }
     }
     if (getNumOutputs()==1) {
       stream << " Output: " << output().dimString() << endl;
     } else {
-      if (outputScheme_==SCHEME_unknown) {
+      if (outputScheme_.isNull()) {
         stream << " Outputs (" << getNumOutputs() << "):" << std::endl;
         for (int i=0;i<getNumOutputs();i++) {
           stream << "  " << i << ". " << output(i).dimString() << std::endl;
         }
       } else { 
-        stream << " Outputs (" << getSchemeName(outputScheme_) << ": " << getNumOutputs() << "):" << std::endl;
+        stream << " Outputs (" << outputScheme_.name() << ": " << getNumOutputs() << "):" << std::endl;
         for (int i=0;i<getNumOutputs();i++) {
-          stream << "  " << i << ". (" << getSchemeEntryEnumName(outputScheme_,i) << " aka " << getSchemeEntryName(outputScheme_,i) << ")   " << output(i).dimString() << std::endl;
+          stream << "  " << i << ". (" << outputScheme_.describe(i) << ")   " << output(i).dimString() << std::endl;
         }
       }
     }
@@ -219,7 +224,19 @@ namespace CasADi{
     stringstream ss;
     ss << "gradient_" << getOption("name") << "_" << iind << "_" << oind;
     ret.setOption("name",ss.str());
-  
+
+    ret.setInputScheme(inputScheme_);
+    
+    // Output names
+    std::vector<std::string> ionames;
+    ionames.reserve(ret.getNumOutputs());   
+    ionames.push_back("grad");
+    for (int i=0;i<getNumOutputs();++i) {
+      ionames.push_back(outputScheme_.entryLabel(i));
+    }
+    
+    ret.setOutputScheme(ionames);
+    
     return ret;
   }
   
@@ -236,7 +253,20 @@ namespace CasADi{
     stringstream ss;
     ss << "hessian_" << getOption("name") << "_" << iind << "_" << oind;
     ret.setOption("name",ss.str());
-  
+
+    ret.setInputScheme(inputScheme_);
+    
+    // Output names
+    std::vector<std::string> ionames;
+    ionames.reserve(ret.getNumOutputs());   
+    ionames.push_back("hess");
+    ionames.push_back("grad");
+    for (int i=0;i<getNumOutputs();++i) {
+      ionames.push_back(outputScheme_.entryLabel(i));
+    }
+    
+    ret.setOutputScheme(ionames);
+    
     return ret;
   }
   
@@ -473,11 +503,10 @@ namespace CasADi{
     // Construct sparsity pattern
     CRSSparsity ret = sp_triplet(nz_out, nz_in,use_fwd ? jrow : jcol, use_fwd ? jcol : jrow);
     
+    casadi_log("Formed Jacobian sparsity pattern (dimension " << ret.shape() << ", " << ret.size() << " nonzeros, " << 100*double(ret.size())/double(ret.size1())/double(ret.size2()) << " \% nonzeros).");
+    casadi_log("FXInternal::getJacSparsity end ");
+    
     // Return sparsity pattern
-    if(verbose()){
-      std::cout << "Formed Jacobian sparsity pattern (dimension " << ret.shape() << ", " << 100*double(ret.size())/ret.numel() << " \% nonzeros)." << endl;
-      std::cout << "FXInternal::getJacSparsity end " << endl;
-    }
     return ret;
   }
 
@@ -532,7 +561,7 @@ namespace CasADi{
       
       CRSSparsity D = r.starColoring();
 
-      casadi_log("Star coloring: " << D.size1() << " <-> " << D.size2());
+      casadi_log("Star coloring on " << r.dimString() << ": " << D.size1() << " <-> " << D.size2());
       
       // Reset the virtual machine
       spInit(true);
@@ -665,8 +694,17 @@ namespace CasADi{
               }
             }
               
-            // Clean seed vector, ready for next bvec sweep
-            for(int i=0; i<nz; ++i) seed_v[i]=0;
+            // Clear the forward seeds/adjoint sensitivities, ready for next bvec sweep
+            for(int ind=0; ind<getNumInputs(); ++ind){
+              vector<double> &v = inputNoCheck(ind).data();
+              if(!v.empty()) fill_n(get_bvec_t(v),v.size(),bvec_t(0));
+            }
+   
+            // Clear the adjoint seeds/forward sensitivities, ready for next bvec sweep
+            for(int ind=0; ind<getNumOutputs(); ++ind){
+              vector<double> &v = outputNoCheck(ind).data();
+              if(!v.empty()) fill_n(get_bvec_t(v),v.size(),bvec_t(0));
+            }
               
             // Clean lookup table
             lookup_row.clear();
@@ -693,6 +731,7 @@ namespace CasADi{
     }
     
     casadi_log("Number of sweeps: " << nsweeps );
+    casadi_log("Formed Jacobian sparsity pattern (dimension " << r.shape() << ", " << r.size() << " nonzeros, " << 100*double(r.size())/double(r.size1())/double(r.size2()) << " \% nonzeros).");
     
     return r;
   }
@@ -745,6 +784,13 @@ namespace CasADi{
     
     bool hasrun = false;
     
+    // Lookup table for bvec_t
+    std::vector<bvec_t> bvec_lookup;
+    bvec_lookup.reserve(bvec_size);
+    for (int i=0;i<bvec_size;++i) {
+      bvec_lookup.push_back(bvec_t(1) << i);
+    }
+    
     while (!hasrun || coarse_row.size()!=nz_out+1 || coarse_col.size()!=nz_in+1) {
       casadi_log("Block size: " << granularity_row << " x " << granularity_col);
     
@@ -760,8 +806,13 @@ namespace CasADi{
       CRSSparsity rT = r.transpose();
       
       /**       Decide which ad_mode to take           */
+      
+      // Forward mode
       CRSSparsity D1 = rT.unidirectionalColoring(r);
+      // Adjoint mode
       CRSSparsity D2 = r.unidirectionalColoring(rT);
+      
+      casadi_log("Coloring on " << r.dimString() << " (fwd seeps: " << D1.size1() << " , adj sweeps: " << D2.size2() << ")");
       
       // Adjoint mode penalty factor (adjoint mode is usually more expensive to calculate)
       int adj_penalty = 2;
@@ -772,10 +823,10 @@ namespace CasADi{
       // Use whatever required less colors if we tried both (with preference to forward mode)
       if((D1.size1()*fwd_cost <= adj_penalty*D2.size1()*adj_cost)){
         use_fwd = true;
-        casadi_log("Forward mode chosen: " << D1.size1()*fwd_cost << " <-> " << adj_penalty*D2.size1()*adj_cost);
+        casadi_log("Forward mode chosen (fwd cost: " << D1.size1()*fwd_cost << ", adj cost: " << adj_penalty*D2.size1()*adj_cost << ")");
       } else {
         use_fwd = false;
-        casadi_log("Adjoint mode chosen: " << D1.size1()*fwd_cost << " <-> " << adj_penalty*D2.size1()*adj_cost);
+        casadi_log("Adjoint mode chosen (adj cost: " << D1.size1()*fwd_cost << ", adj cost: " << adj_penalty*D2.size1()*adj_cost << ")");
       }
       
       use_fwd = spCanEvaluate(true) && use_fwd;
@@ -917,10 +968,13 @@ namespace CasADi{
               for (int fri=fine_row_lookup[coarse_row[cri]];fri<fine_row_lookup[coarse_row[cri+1]];++fri) {
                 // Lump individual sensitivities together into fine block
                 bvec_or(sens_v,spsens,fine_row[fri],fine_row[fri+1]);
+                
+                // Next iteration if no sparsity
+                if (!spsens) continue;
   
                 // Loop over all bvec_bits
                 for (int bvec_i=0;bvec_i<bvec_size;++bvec_i) {
-                  if (spsens & (bvec_t(1) << bvec_i)) {
+                  if (spsens & bvec_lookup[bvec_i]) {
                     // if dependency is found, add it to the new sparsity pattern
                     jcol.push_back(bvec_i+lookup.elem(cri,bvec_i));
                     jrow.push_back(fri);
@@ -928,9 +982,18 @@ namespace CasADi{
                 }
               }
             }
-              
-            // Clean seed vector, ready for next bvec sweep
-            for(int i=0; i<nz_seed; ++i) seed_v[i]=0;
+            
+            // Clear the forward seeds/adjoint sensitivities, ready for next bvec sweep
+            for(int ind=0; ind<getNumInputs(); ++ind){
+              vector<double> &v = inputNoCheck(ind).data();
+              if(!v.empty()) fill_n(get_bvec_t(v),v.size(),bvec_t(0));
+            }
+   
+            // Clear the adjoint seeds/forward sensitivities, ready for next bvec sweep
+            for(int ind=0; ind<getNumOutputs(); ++ind){
+              vector<double> &v = outputNoCheck(ind).data();
+              if(!v.empty()) fill_n(get_bvec_t(v),v.size(),bvec_t(0));
+            }
               
             // Clean lookup table
             lookup_row.clear();
@@ -965,6 +1028,7 @@ namespace CasADi{
       hasrun = true;
     }
     casadi_log("Number of sweeps: " << nsweeps );
+    casadi_log("Formed Jacobian sparsity pattern (dimension " << r.shape() << ", " << r.size() << " nonzeros, " << 100*double(r.size())/double(r.size1())/double(r.size2()) << " \% nonzeros).");
     
     return r;
   }
@@ -1085,9 +1149,7 @@ namespace CasADi{
       // Star coloring if symmetric
       log("FXInternal::getPartition starColoring");
       D1 = A.starColoring();
-      if(verbose()){
-        cout << "Star coloring completed: " << D1.size1() << " directional derivatives needed (" << A.size2() << " without coloring)." << endl;
-      }
+      casadi_log("Star coloring completed: " << D1.size1() << " directional derivatives needed (" << A.size2() << " without coloring).");
     
     } else {
     
@@ -1135,8 +1197,8 @@ namespace CasADi{
         }
       }
 
-      log("FXInternal::getPartition end");
     }
+    log("FXInternal::getPartition end");
   }
 
   void FXInternal::evaluateCompressed(int nfdir, int nadir){
@@ -1274,7 +1336,7 @@ namespace CasADi{
           arg_new[i].set(arg[i]);
         } catch(exception& ex){
           stringstream ss;
-          ss << "SXFunctionInternal::evalSX: Failed to set " << describeInput(inputScheme_,i) << ": " << ex.what();
+          ss << "SXFunctionInternal::evalSX: Failed to set " << inputScheme_.describeInput(i) << ": " << ex.what();
           throw CasadiException(ss.str());
         }
       }
@@ -1298,7 +1360,7 @@ namespace CasADi{
             fseed_new[dir][i].set(fseed[dir][i]);
           } catch(exception& ex){
             stringstream ss;
-            ss << "SXFunctionInternal::evalSX: Failed to set forward seed of " << describeInput(inputScheme_,i) << ", direction " << dir << ": " << ex.what();
+            ss << "SXFunctionInternal::evalSX: Failed to set forward seed of " << inputScheme_.describeInput(i) << ", direction " << dir << ": " << ex.what();
             throw CasadiException(ss.str());
           }
         }
@@ -1323,7 +1385,7 @@ namespace CasADi{
             aseed_new[dir][i].set(aseed[dir][i]);
           } catch(exception& ex){
             stringstream ss;
-            ss << "SXFunctionInternal::evalSX: Failed to set adjoint seed of " << describeOutput(outputScheme_,i) << ", direction " << dir << ": " << ex.what();
+            ss << "SXFunctionInternal::evalSX: Failed to set adjoint seed of " << outputScheme_.describeOutput(i) << ", direction " << dir << ": " << ex.what();
             throw CasadiException(ss.str());
           }
         }
@@ -1374,8 +1436,14 @@ namespace CasADi{
 
   void FXInternal::evalMX(const std::vector<MX>& arg, std::vector<MX>& res, 
                           const std::vector<std::vector<MX> >& fseed, std::vector<std::vector<MX> >& fsens, 
-                          const std::vector<std::vector<MX> >& aseed, std::vector<std::vector<MX> >& asens){
-    casadi_error("FXInternal::evalMX not defined for class " << typeid(*this).name());
+                          const std::vector<std::vector<MX> >& aseed, std::vector<std::vector<MX> >& asens){                
+    // Wrap in an MXFunction
+    vector<MX> in = symbolicInput();
+    vector<MX> out = shared_from_this<FX>().call(in);
+    MXFunction f = MXFunction(in,out);
+    f.setInputScheme(getInputScheme());
+    f.init();
+    f.evalMX(arg,res,fseed,fsens,aseed,asens);
   }
 
   void FXInternal::spEvaluate(bool fwd){
@@ -1508,6 +1576,17 @@ namespace CasADi{
     ret.setOption("name",ss.str());
     ret.setOption("verbose",getOption("verbose"));
     ret.setInputScheme(inputScheme_);
+    
+    // Output names
+    std::vector<std::string> ionames;
+    ionames.reserve(ret.getNumOutputs());   
+    ionames.push_back("jac");
+    for (int i=0;i<getNumOutputs();++i) {
+      ionames.push_back(outputScheme_.entryLabel(i));
+    }
+    
+    ret.setOutputScheme(ionames);
+    
     return ret;
   }
 
@@ -1562,7 +1641,67 @@ namespace CasADi{
       stringstream ss;
       ss << "derivative_" << getOption("name") << "_" << nfwd << "_" << nadj;
       ret.setOption("name",ss.str());
+      
+      // Names of inputs
+      std::vector<std::string> io_names;
+      io_names.reserve(getNumInputs()*(1+nfwd)+getNumOutputs()*nadj);
+
+      // Nondifferentiated inputs
+      for(int i=0; i<getNumInputs(); ++i){
+        io_names.push_back(inputScheme_.entryLabel(i));
+      }
+
+      // Forward seeds
+      for(int d=0; d<nfwd; ++d){
+        for(int i=0; i<getNumInputs(); ++i){
+          ss.str(string());
+          ss << "fwd" << d << "_" << inputScheme_.entryLabel(i);
+          io_names.push_back(ss.str());
+        }
+      }
+      
+      // Adjoint seeds
+      for(int d=0; d<nadj; ++d){
+        for(int i=0; i<getNumOutputs(); ++i){
+          ss.str(string());
+          ss << "adj" << d << "_" << outputScheme_.entryLabel(i);
+          io_names.push_back(ss.str());
+        }
+      }
+      
+      // Pass to return object
+      ret.setInputScheme(io_names);
     
+      // Names of outputs
+      io_names.clear();
+      io_names.reserve(getNumOutputs()*(1+nfwd)+getNumInputs()*nadj);
+      
+      // Nondifferentiated inputs
+      for(int i=0; i<getNumOutputs(); ++i){
+        io_names.push_back(outputScheme_.entryLabel(i));
+      }
+      
+      // Forward sensitivities
+      for(int d=0; d<nfwd; ++d){
+        for(int i=0; i<getNumOutputs(); ++i){
+          ss.str(string());
+          ss << "fwd" << d << "_" << outputScheme_.entryLabel(i);
+          io_names.push_back(ss.str());
+        }
+      }
+      
+      // Adjoint sensitivities
+      for(int d=0; d<nadj; ++d){
+        for(int i=0; i<getNumInputs(); ++i){
+          ss.str(string());
+          ss << "adj" << d << "_" << inputScheme_.entryLabel(i);
+          io_names.push_back(ss.str());
+        }
+      }
+      
+      // Pass to return object
+      ret.setOutputScheme(io_names);
+      
       // Initialize it
       ret.init();
     }
@@ -1631,7 +1770,7 @@ namespace CasADi{
         if(arg[i].isNull() || arg[i].empty() || input(i).isNull() || input(i).empty()) continue;
         casadi_assert_message(arg[i].size1()==input(i).size1() && arg[i].size2()==input(i).size2(),
                               "Evaluation::shapes of passed-in dependencies should match shapes of inputs of function." << 
-                              std::endl << describeInput(inputScheme_,i) <<  " has shape (" << input(i).size1() << 
+                              std::endl << inputScheme_.describeInput(i) <<  " has shape (" << input(i).size1() << 
                               "," << input(i).size2() << ") while a shape (" << arg[i].size1() << "," << arg[i].size2() << 
                               ") was supplied.");
       }
@@ -2301,6 +2440,16 @@ namespace CasADi{
   void FXInternal::evaluateD(MXNode* node, const DMatrixPtrV& arg, DMatrixPtrV& res,
                              const DMatrixPtrVV& fseed, DMatrixPtrVV& fsens,
                              const DMatrixPtrVV& aseed, DMatrixPtrVV& asens, std::vector<int>& itmp, std::vector<double>& rtmp) {
+                             
+    // Set up timers for profiling
+    double time_zero;
+    double time_start;
+    double time_stop;
+    double time_offset=0;
+    
+    if (CasadiOptions::profiling) {
+      time_start = getRealTime(); // Start timer
+    }
   
     // Number of inputs and outputs
     int num_in = getNumInputs();
@@ -2360,10 +2509,16 @@ namespace CasADi{
           }
         }
       }
-
+      
+      if (CasadiOptions::profiling) {
+        time_zero = getRealTime();
+      }
       // Evaluate
       evaluate(nfdir_f_batch, nadir_f_batch);
-    
+      if (CasadiOptions::profiling) {
+        time_offset += getRealTime() - time_zero;
+      }
+      
       // Get the outputs if first evaluation
       if(!fcn_evaluated){
         for(int i = 0; i < num_out; ++i) {
@@ -2399,6 +2554,13 @@ namespace CasADi{
 
     // Clear adjoint seeds
     MXNode::clearVector(aseed);
+    
+    // Write out profiling information
+    if (CasadiOptions::profiling) {
+      time_stop = getRealTime();
+      CasadiOptions::profilingLog  << "overhead " << this << ":" <<getOption("name") << "|" << double(time_stop-time_start-time_offset)*1e6 << " ns" << std::endl; 
+    }
+    
   }
 
   void FXInternal::printPart(const MXNode* node, std::ostream &stream, int part) const {

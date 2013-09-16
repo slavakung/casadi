@@ -72,13 +72,13 @@ namespace CasADi{
       if(fwdSeed[d][0]!=fwdSens[d][0]){
         copy(fwdSeed[d][0]->begin(),fwdSeed[d][0]->end(),fwdSens[d][0]->begin());
       }
-      for_each(fwdSens[d][0]->begin(),fwdSens[d][0]->end(),std::negate<double>());
+      transform(fwdSens[d][0]->begin(),fwdSens[d][0]->end(),fwdSens[d][0]->begin(),std::negate<double>());
       if(Tr){
         DMatrix::mul_no_alloc_nt(*output[0],*fwdSeed[d][1],*fwdSens[d][0]);
       } else {
         DMatrix::mul_no_alloc_nn(*output[0],*fwdSeed[d][1],*fwdSens[d][0]);
       }
-      for_each(fwdSens[d][0]->begin(),fwdSens[d][0]->end(),std::negate<double>());
+      transform(fwdSens[d][0]->begin(),fwdSens[d][0]->end(),fwdSens[d][0]->begin(),std::negate<double>());
       linear_solver_.solve(getPtr(fwdSens[d][0]->data()),output[0]->size1(),Tr);      
     }
 
@@ -86,11 +86,11 @@ namespace CasADi{
     for(int d=0; d<nadj; ++d){
 
       // Solve transposed
-      for_each(adjSeed[d][0]->begin(),adjSeed[d][0]->end(),std::negate<double>());
+      transform(adjSeed[d][0]->begin(),adjSeed[d][0]->end(),adjSeed[d][0]->begin(),std::negate<double>());
       linear_solver_.solve(getPtr(adjSeed[d][0]->data()),output[0]->size1(),!Tr);
 
       // Propagate to A
-      if(Tr){
+      if(!Tr){
         DMatrix::mul_no_alloc_tn(*output[0],*adjSeed[d][0],*adjSens[d][1]);
       } else {
         DMatrix::mul_no_alloc_tn(*adjSeed[d][0],*output[0],*adjSens[d][1]);
@@ -98,7 +98,7 @@ namespace CasADi{
 
       // Propagate to B
       if(adjSeed[d][0]==adjSens[d][0]){
-        for_each(adjSens[d][0]->begin(),adjSens[d][0]->end(),std::negate<double>());
+        transform(adjSens[d][0]->begin(),adjSens[d][0]->end(),adjSens[d][0]->begin(),std::negate<double>());
       } else {
         transform(adjSens[d][0]->begin(),adjSens[d][0]->end(),adjSeed[d][0]->begin(),adjSens[d][0]->begin(),std::minus<double>());
         fill(adjSeed[d][0]->begin(),adjSeed[d][0]->end(),0);
@@ -190,10 +190,11 @@ namespace CasADi{
         int d = rhs_ind[i];
 
         // Propagate to A
-        if(Tr){
-          *adjSens[d][1] -= mul(trans(X),rhs[i]);
+        if(!Tr){
+          
+          *adjSens[d][1] -= mul(trans(X),rhs[i],A.sparsity());
         } else {
-          *adjSens[d][1] -= mul(trans(rhs[i]),X);
+          *adjSens[d][1] -= mul(trans(rhs[i]),X,A.sparsity());
         }
 
         // Propagate to B
@@ -224,7 +225,7 @@ namespace CasADi{
       // Get dependencies of all A elements
       bvec_t A_dep = 0;
       for(int i=0; i<nnz; ++i){
-        A_dep |= *A_ptr;
+        A_dep |= *A_ptr++;
       }
 
       // One right hand side at a time

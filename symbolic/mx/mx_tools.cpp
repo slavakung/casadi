@@ -96,8 +96,8 @@ namespace CasADi{
     return x->getNormInf();
   }
 
-  MX mul(const MX &x, const MX &y){
-    return x.mul(y);
+  MX mul(const MX &x, const MX &y, const CRSSparsity& sp_z){
+    return x.mul(y,sp_z);
   }
 
   MX mul(const std::vector< MX > &args){
@@ -408,6 +408,13 @@ namespace CasADi{
     }
     
     return ret;
+  }
+  
+  MX blkdiag(const MX &A, const MX& B) {
+    std::vector<MX> ret;
+    ret.push_back(A);
+    ret.push_back(B);
+    return blkdiag(ret);
   }
 
   int countNodes(const MX& A){

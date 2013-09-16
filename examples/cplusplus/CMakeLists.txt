@@ -47,7 +47,7 @@ if(IPOPT_FOUND)
   add_executable(sqpmethod_nl sqpmethod_nl.cpp)
   target_link_libraries(sqpmethod_nl 
     casadi_ipopt_interface casadi_nonlinear_programming casadi 
-    ${IPOPT_LIBRARIES} ${CASADI_DEPENDENCIES}
+    ${IPOPT_LIBRARIES} ${CASADI_DEPENDENCIES} casadi_sqic_interface sqic_fortran_c_bridge ${SQIC_LIBRARIES}
   )
 
 endif()
@@ -101,7 +101,7 @@ endif()
 if(WITH_SUNDIALS AND IPOPT_FOUND AND WITH_CSPARSE)
   add_executable(cstr cstr.cpp)
   target_link_libraries(cstr 
-    casadi_sundials_interface casadi_ipopt_interface casadi_optimal_control casadi_csparse_interface casadi 
+    casadi_sundials_interface casadi_ipopt_interface casadi_optimal_control casadi_integration casadi_csparse_interface casadi 
     ${IPOPT_LIBRARIES} ${SUNDIALS_LIBRARIES} ${TINYXML_LIBRARIES} ${CSPARSE_LIBRARIES} ${CASADI_DEPENDENCIES} 
   )
 endif()
@@ -169,7 +169,7 @@ if(WITH_DL AND IPOPT_FOUND)
   target_link_libraries(nlp_codegen casadi_ipopt_interface casadi ${CASADI_DEPENDENCIES} ${IPOPT_LIBRARIES})
 endif()
 
-if(WITH_DL)
+if(WITH_DL AND NOT WIN32)
   add_executable(codegen_usage codegen_usage.cpp)
   target_link_libraries(codegen_usage casadi ${CASADI_DEPENDENCIES})
 endif()

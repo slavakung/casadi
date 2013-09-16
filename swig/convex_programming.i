@@ -33,6 +33,8 @@
 #ifdef WITH_CSPARSE
 %{
 #include "convex_programming/socp_qcqp_solver.hpp"
+#include "convex_programming/sdp_sdqp_solver.hpp"
 %}
 %include "convex_programming/socp_qcqp_solver.hpp"
+%include "convex_programming/sdp_sdqp_solver.hpp"
 #endif // WITH_CSPARSE

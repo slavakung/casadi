@@ -54,9 +54,99 @@ integrators.append((CollocationIntegrator,["dae","ode"],{"implicit_solver":Kinso
 print "Will test these integrators:"
 for cl, t, options in integrators:
   print cl.__name__, " : ", t
-  
+
 class Integrationtests(casadiTestCase):
 
+
+  def test_full(self):
+    num = self.num
+    tc = DMatrix(n.linspace(0,num['tend'],100))
+    
+    t=ssym("t")
+    q=ssym("q")
+    p=ssym("p")
+    
+    out = SXFunction(daeIn(t=t, x=q, p=p),[q,t,p])
+    out.init()
+        
+    f=SXFunction(daeIn(t=t, x=q, p=p),daeOut(ode=q/p*t**2))
+    f.init()
+    integrator = CVodesIntegrator(f)
+    integrator.setOption("reltol",1e-15)
+    integrator.setOption("abstol",1e-15)
+    integrator.setOption("fsens_err_con", True)
+    #integrator.setOption("verbose",True)
+    integrator.setOption("t0",0)
+    integrator.setOption("tf",2.3)
+    integrator.init()
+    tf = 2.3
+    
+    solution = SXFunction(integratorIn(x0=q, p=p),integratorOut(xf=q*exp(tf**3/(3*p))))
+    solution.init()
+    
+    for f in [solution,integrator]:
+      f.setInput(0.3,"x0")
+      f.setInput(0.7,"p")
+    
+    self.checkfx(integrator,solution,digits=6)
+
+  def test_tools_trivial(self):
+    num = self.num
+
+    t=ssym("t")
+    q=ssym("q")
+    p=ssym("p")
+    
+    f=SXFunction(daeIn(x=q),daeOut(ode=q))
+    f.init()
+    tf = 1
+    
+    for integrator in [
+         explicitRK(f,tf,4,10),
+         implicitRK(f,NewtonImplicitSolver,{"linear_solver": CSparse},tf,4,"radau",10)
+       ]:
+      integrator.init()
+      
+      solution = SXFunction(integratorIn(x0=q),integratorOut(xf=q*exp(tf)))
+      solution.init()
+      
+      for f in [solution,integrator]:
+        f.setInput(1,"x0")
+        
+      integrator.evaluate()
+      
+
+      self.checkfx(integrator,solution,digits=5)
+
+ 
+  def test_tools(self):
+    num = self.num
+
+    t=ssym("t")
+    q=ssym("q")
+    p=ssym("p")
+    
+    out = SXFunction(daeIn(t=t, x=q, p=p),[q,t,p])
+    out.init()
+
+    f=SXFunction(daeIn(t=t, x=q, p=p),daeOut(ode=q/p*t**2))
+    f.init()
+    tf = 1
+    for integrator in [
+         explicitRK(f,tf,4,500),
+         implicitRK(f,NewtonImplicitSolver,{"linear_solver": CSparse},tf,4,"radau",50)
+       ]:
+      integrator.init()
+      
+      solution = SXFunction(integratorIn(x0=q, p=p),integratorOut(xf=q*exp(tf**3/(3*p))))
+      solution.init()
+      
+      for f in [solution,integrator]:
+        f.setInput(0.3,"x0")
+        f.setInput(0.7,"p")
+      
+      self.checkfx(integrator,solution,digits=4)
+    
   @memory_heavy()
   def test_jac(self):
     self.message("Test exact jacobian #536")
@@ -281,7 +371,7 @@ class Integrationtests(casadiTestCase):
 
               integrator.evaluate(1,0)
               
-              self.checkfx(integrator,fs,gradient=False,hessian=False,sens_der=False,digits=4,digits_sens=4,failmessage=message,verbose=False)
+              self.checkfx(integrator,fs,gradient=False,hessian=False,sens_der=False,evals=False,digits=4,digits_sens=4,failmessage=message,verbose=False)
               
               
 
@@ -466,7 +556,7 @@ class Integrationtests(casadiTestCase):
                   ff.setInput(v,i)
             integrator.evaluate(1,0)
             
-            self.checkfx(integrator,fs,gradient=False,hessian=False,sens_der=False,digits=4,digits_sens=4,failmessage=message,verbose=False)
+            self.checkfx(integrator,fs,gradient=False,hessian=False,sens_der=False,evals=False,digits=4,digits_sens=4,failmessage=message,verbose=False)
 
         
   def setUp(self):

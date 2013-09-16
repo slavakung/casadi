@@ -21,6 +21,7 @@
 */
 #include <symbolic/casadi.hpp>
 #include <interfaces/ipopt/ipopt_solver.hpp>
+#include <interfaces/sqic/sqic_solver.hpp>
 #include <nonlinear_programming/sqp_method.hpp>
 #include <nonlinear_programming/nlp_qp_solver.hpp>
 #include <nonlinear_programming/symbolic_nlp.hpp>
@@ -61,19 +62,22 @@ int main(int argc, char **argv){
   // nlp_solver.setOption("derivative_test","second-order");
 
   // Specify QP solver
-  nlp_solver.setOption("qp_solver",NLPQPSolver::creator);
-  Dictionary qp_solver_options;
-  qp_solver_options["nlp_solver"] = IpoptSolver::creator; 
-  Dictionary nlp_solver_options;
-  nlp_solver_options["print_level"] = 0;
-  nlp_solver_options["print_time"] = 0;
-  nlp_solver_options["tol"] = 1e-16;
-  nlp_solver_options["constr_viol_tol"] = 1e-16;
-  nlp_solver_options["dual_inf_tol"] = 1e-16;
-  nlp_solver_options["compl_inf_tol"] = 1e-16;
+  //nlp_solver.setOption("qp_solver",NLPQPSolver::creator);
+ // Dictionary qp_solver_options;
+  //qp_solver_options["nlp_solver"] = IpoptSolver::creator; 
+  //Dictionary nlp_solver_options;
 
-  qp_solver_options["nlp_solver_options"] = nlp_solver_options;
-  nlp_solver.setOption("qp_solver_options",qp_solver_options);
+  nlp_solver.setOption("qp_solver",SQICSolver::creator);
+
+  //nlp_solver_options["print_level"] = 0;
+  //nlp_solver_options["print_time"] = 0;
+  //nlp_solver_options["tol"] = 1e-16;
+  //nlp_solver_options["constr_viol_tol"] = 1e-16;
+  //nlp_solver_options["dual_inf_tol"] = 1e-16;
+  //nlp_solver_options["compl_inf_tol"] = 1e-16;
+
+  //qp_solver_options["nlp_solver_options"] = nlp_solver_options;
+  //nlp_solver.setOption("qp_solver_options",qp_solver_options);
  
   // Initialize NLP solver
   nlp_solver.init();

@@ -20,6 +20,7 @@ SET(CASADI_SRCS
   generic_type_internal.hpp                             # Internal class for the same
   options_functionality.cpp   options_functionality.hpp # Functionality for getting and setting options of a derived class
   stl_vector_tools.hpp        stl_vector_tools.cpp      # Set of useful functions for the vector template class in STL
+  profiling.cpp               profiling.hpp
 
   # Template class Matrix<>, implements a sparse Matrix with row compressed storage, designed to work well with symbolic data types (SX)
   matrix/generic_expression.hpp                         # Base class for SX MX and Matrix<>
@@ -71,6 +72,7 @@ SET(CASADI_SRCS
 
   # A dynamically created function with AD capabilities
   fx/io_interface.hpp                                   # Input/output interface for FX and FXInternal
+  fx/io_scheme.hpp           fx/io_scheme.cpp           fx/io_scheme_internal.hpp           fx/io_scheme_internal.cpp 
   fx/fx.hpp                  fx/fx.cpp                  fx/fx_internal.hpp                  fx/fx_internal.cpp
   fx/x_function_internal.hpp                            # Base class for SXFunction and MXFunction
   fx/sx_function.hpp         fx/sx_function.cpp         fx/sx_function_internal.hpp         fx/sx_function_internal.cpp
@@ -89,6 +91,7 @@ SET(CASADI_SRCS
   fx/ocp_solver.hpp          fx/ocp_solver.cpp          fx/ocp_solver_internal.hpp          fx/ocp_solver_internal.cpp
   fx/qp_solver.hpp           fx/qp_solver.cpp           fx/qp_solver_internal.hpp           fx/qp_solver_internal.cpp
   fx/sdp_solver.hpp          fx/sdp_solver.cpp          fx/sdp_solver_internal.hpp          fx/sdp_solver_internal.cpp
+  fx/sdqp_solver.hpp         fx/sdqp_solver.cpp         fx/sdqp_solver_internal.hpp         fx/sdqp_solver_internal.cpp
   fx/socp_solver.hpp         fx/socp_solver.cpp         fx/socp_solver_internal.hpp         fx/socp_solver_internal.cpp
   fx/qcqp_solver.hpp         fx/qcqp_solver.cpp         fx/qcqp_solver_internal.hpp         fx/qcqp_solver_internal.cpp
   fx/lp_solver.hpp           fx/lp_solver.cpp           fx/lp_internal.hpp                  fx/lp_internal.cpp

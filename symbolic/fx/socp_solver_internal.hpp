@@ -47,6 +47,12 @@ class SOCPSolverInternal : public FXInternal{
     // Solve the system of equations
     virtual void solve();
     
+    /// \brief Check if the numerical values of the supplied bounds make sense
+    virtual void checkInputs() const;
+    
+    /// Print out problem statement for debugging
+    void printProblem(std::ostream &stream=std::cout) const;
+    
   protected:
   
     /// Problem structure
@@ -67,6 +73,8 @@ class SOCPSolverInternal : public FXInternal{
     /// Number of linear constraints
     int nc_;
     
+    /// Indicates wether problem is printed before solving
+    bool print_problem_;
 };
 
 

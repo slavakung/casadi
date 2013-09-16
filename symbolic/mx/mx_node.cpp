@@ -362,11 +362,20 @@ namespace CasADi{
     return MX::create(new Reshape(shared_from_this<MX>(),sp));
   }
   
-  MX MXNode::getMultiplication(const MX& y) const{
+  
+  MX MXNode::getMultiplication(const MX& y,const CRSSparsity& sp_z) const{
     // Transpose the second argument
     MX trans_y = trans(y);
-    CRSSparsity sp_z = sparsity().patternProduct(trans_y.sparsity());
-    MX z = MX::zeros(sp_z);
+    MX z;
+    if (sp_z.isNull()) {
+      CRSSparsity sp_z_ = sparsity().patternProduct(trans_y.sparsity());
+      z = MX::zeros(sp_z_);
+    } else {
+      z = MX::zeros(sp_z);
+    }
+    casadi_assert_message(size1()==z.size1(),"Dimension error. Got lhs=" << size1() << " and z=" << z.dimString() << ".");
+    casadi_assert_message(trans_y.size1()==z.size2(),"Dimension error. Got trans_y=" << trans_y.dimString() << " and z=" << z.dimString() << ".");
+    casadi_assert_message(size2()==trans_y.size2(),"Dimension error. Got lhs=" << size2() << " and trans_y" << trans_y.dimString() << ".");
     if(sparsity().dense() && y.dense()){
       return MX::create(new DenseMultiplication<false,true>(z,shared_from_this<MX>(),trans_y));
     } else {
@@ -430,7 +439,7 @@ namespace CasADi{
 
 
   MX MXNode::getAddNonzeros(const MX& y, const std::vector<int>& nz) const{
-    if(nz.size()==0){
+    if(nz.size()==0 || isZero()) {
       return y;
     } else {
       MX ret;
@@ -695,6 +704,14 @@ namespace CasADi{
     } else if(c.size()==1){
       return c[0];
     } else {
+      // If dependents are all-zero, produce a new constant
+      bool zero = true;
+      for (int i=0;i<c.size();++i) {
+        if (!c[i]->isZero()) { zero = false; break; }
+      }
+      if (zero) {
+        return MX::zeros(Vertcat(c).sparsity());
+      }
       // Split up existing vertcats
       vector<MX> c_split;
       c_split.reserve(c.size());
@@ -710,6 +727,13 @@ namespace CasADi{
   }
 
   std::vector<MX> MXNode::getVertsplit(const std::vector<int>& output_offset) const{
+    if (isZero()) {
+      std::vector<MX> ret = MX::createMultipleOutput(new Vertsplit(shared_from_this<MX>(),output_offset));
+      for (int i=0;i<ret.size();++i) {
+        ret[i]=MX::zeros(ret[i].sparsity());
+      }
+      return ret;
+    }
     return MX::createMultipleOutput(new Vertsplit(shared_from_this<MX>(),output_offset));
   }
 

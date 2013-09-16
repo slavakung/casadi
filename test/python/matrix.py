@@ -794,6 +794,14 @@ class Matrixtests(casadiTestCase):
     self.assertEqual(sprank(DMatrix.ones(3,3)),3)
     self.assertEqual(sprank(DMatrix.ones(3,3)),3)
     
+    A = DMatrix(6,4)
+    A[0,0] = 1
+    A[1,2] = 1
+    A[2,2] = 1
+    A[5,3] = 1
+
+    self.assertEqual(sprank(A),3)
+    
   def test_cross(self):
     self.message("cross products")
     
@@ -840,7 +848,33 @@ class Matrixtests(casadiTestCase):
     
     with self.assertRaises(Exception):
       tril2symm(DMatrix.ones(5,5))
+      
+  def test_append_empty(self):
+    a = DMatrix(0,0)
+    a.append(DMatrix(0,2))
     
+    self.assertEqual(a.size1(),0)
+    self.assertEqual(a.size2(),2)
+
+    a = DMatrix(0,0)
+    a.append(DMatrix(2,0))
+    a.append(DMatrix(3,0))
+    
+    self.assertEqual(a.size1(),5)
+    self.assertEqual(a.size2(),0)
+    
+  def test_vertcat_empty(self):
+    a = DMatrix(0,2)
+    v = vertcat([a,a])
+    
+    self.assertEqual(v.size1(),0)
+    self.assertEqual(v.size2(),2)
+
+    a = DMatrix(2,0)
+    v = vertcat([a,a])
+    
+    self.assertEqual(v.size1(),4)
+    self.assertEqual(v.size2(),0)
     
 if __name__ == '__main__':
     unittest.main()
